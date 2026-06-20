@@ -12,7 +12,7 @@ export function getWorkOrderBids(workOrderId: string): Promise<Bid[]> {
 export function createWorkOrderBid(workOrderId: string, payload: CreateBidPayload): Promise<Bid> {
   return apiFetch<Bid>(`/api/work-orders/${workOrderId}/bids`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, work_order_id: workOrderId }),
   });
 }
 

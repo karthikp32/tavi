@@ -92,6 +92,8 @@ class WorkOrder(Base):
     bid_deadline_at = Column(DateTime, nullable=True)
     urgency = Column(String, nullable=True)
     bidding_mode = Column(String, nullable=True)
+    required_arrival_window_start = Column(DateTime, nullable=True)
+    required_arrival_window_end = Column(DateTime, nullable=True)
 
     selected_vendor_id = Column(String, ForeignKey("vendors.id"), nullable=True)
     accepted_bid_id = Column(

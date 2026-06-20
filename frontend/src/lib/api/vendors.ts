@@ -1,23 +1,29 @@
 import { apiFetch, buildQueryString } from "./client";
-import type { Vendor } from "../types";
+import type { CommunicationEvent, Vendor } from "../types";
 
 export interface VendorSearchFilters {
   [key: string]: string | number | boolean | undefined;
   city?: string;
   trade?: string;
-  min_rating?: number;
+  task_type?: string;
+  target_budget?: number;
+  rating?: number;
   license_status?: string;
   insurance_status?: string;
-  min_quality_score?: number;
-  min_availability_score?: number;
-  max_risk_score?: number;
-  task_type?: string;
+  quality_score?: number;
+  availability_score?: number;
+  risk_score?: number;
+  min_price_fit?: number;
 }
 
 export interface ContactVendorPayload {
+  [key: string]: string | number | boolean | undefined;
   channel: "email" | "sms" | "phone";
   work_order_id: string;
-  message?: string;
+  body: string;
+  direction?: "inbound" | "outbound" | "internal";
+  actor_type?: string;
+  actor_name?: string;
 }
 
 export function getVendors(filters: VendorSearchFilters = {}): Promise<Vendor[]> {
@@ -28,9 +34,11 @@ export function getVendor(id: string): Promise<Vendor> {
   return apiFetch<Vendor>(`/api/vendors/${id}`);
 }
 
-export function contactVendor(id: string, payload: ContactVendorPayload) {
-  return apiFetch(`/api/vendors/${id}/contact`, {
+export function contactVendor(
+  id: string,
+  payload: ContactVendorPayload,
+): Promise<CommunicationEvent> {
+  return apiFetch<CommunicationEvent>(`/api/vendors/${id}/contact${buildQueryString(payload)}`, {
     method: "POST",
-    body: JSON.stringify(payload),
   });
 }

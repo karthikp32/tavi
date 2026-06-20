@@ -472,3 +472,58 @@ def test_timeline_endpoint(client, db_session):
     # Verify it is sorted chronologically
     timestamps = [datetime.fromisoformat(item["timestamp"].replace("Z", "")) for item in timeline]
     assert timestamps == sorted(timestamps)
+
+def test_facilities_list_and_create(client, db_session):
+    response = client.get("/api/facilities")
+    assert response.status_code == 200
+    facilities = response.json()
+    assert len(facilities) > 0
+
+    user = db_session.query(models.User).first()
+    payload = {
+        "user_id": user.id,
+        "name": "Brooklyn Annex",
+        "address": "1 Pierrepont St",
+        "city": "Brooklyn",
+        "state": "NY",
+        "postal_code": "11201",
+    }
+    create_response = client.post("/api/facilities", json=payload)
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["id"] is not None
+    assert created["name"] == "Brooklyn Annex"
+
+    list_response = client.get("/api/facilities")
+    assert list_response.status_code == 200
+    assert any(f["id"] == created["id"] for f in list_response.json())
+
+def test_facility_create_with_unknown_user_returns_400(client):
+    payload = {
+        "user_id": "not-a-real-user",
+        "name": "Ghost Facility",
+        "address": "404 Nowhere Ave",
+    }
+    response = client.post("/api/facilities", json=payload)
+    assert response.status_code == 400
+
+def test_work_order_required_arrival_window_round_trip(client, db_session):
+    user = db_session.query(models.User).first()
+    wo_payload = {
+        "user_id": user.id,
+        "title": "Replace HVAC filter",
+        "description": "Filter needs replacement before summer.",
+        "trade": "HVAC",
+        "status": "draft",
+        "required_arrival_window_start": "2026-07-01T09:00:00",
+        "required_arrival_window_end": "2026-07-01T12:00:00",
+    }
+    response = client.post("/api/work-orders", json=wo_payload)
+    assert response.status_code == 201
+    wo = response.json()
+    assert wo["required_arrival_window_start"] is not None
+    assert wo["required_arrival_window_end"] is not None
+
+    fetched = client.get(f"/api/work-orders/{wo['id']}")
+    assert fetched.status_code == 200
+    assert fetched.json()["required_arrival_window_start"].startswith("2026-07-01T09:00:00")

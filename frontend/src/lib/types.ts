@@ -113,6 +113,8 @@ export interface WorkOrder {
   bid_deadline_at: string | null;
   urgency: Urgency | null;
   bidding_mode: BiddingMode | null;
+  required_arrival_window_start: string | null;
+  required_arrival_window_end: string | null;
   selected_vendor_id: string | null;
   accepted_bid_id: string | null;
   accepted_price_cents: number | null;
@@ -121,6 +123,7 @@ export interface WorkOrder {
   completed_vendor_quality_score: number | null;
   created_at: string;
   updated_at: string;
+  facility?: Facility | null;
 }
 
 export interface WorkOrderState {

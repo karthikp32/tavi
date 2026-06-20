@@ -1,11 +1,10 @@
 import { apiFetch } from "./client";
-import type { AgentAction, Bid, CommunicationEvent, WorkOrderState } from "../types";
+import type { Bid, CommunicationEvent, WorkOrderState } from "../types";
 
 export type TimelineEntry =
-  | ({ entry_type: "communication_event" } & CommunicationEvent)
-  | ({ entry_type: "bid" } & Bid)
-  | ({ entry_type: "work_order_state" } & WorkOrderState)
-  | ({ entry_type: "agent_action" } & AgentAction);
+  | { type: "communication_event"; timestamp: string; data: CommunicationEvent }
+  | { type: "bid"; timestamp: string; data: Bid }
+  | { type: "state_snapshot"; timestamp: string; data: WorkOrderState };
 
 export function getWorkOrderTimeline(workOrderId: string): Promise<TimelineEntry[]> {
   return apiFetch<TimelineEntry[]>(`/api/work-orders/${workOrderId}/timeline`);

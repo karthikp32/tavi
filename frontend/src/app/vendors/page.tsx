@@ -1,15 +1,147 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { ScoreBadge } from "@/components/ui/ScoreBadge";
+import { Table, type TableColumn } from "@/components/ui/Table";
+import { getVendors, type VendorSearchFilters } from "@/lib/api/vendors";
+import type { Vendor } from "@/lib/types";
+
+const inputClassName =
+  "rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy focus:border-tavi-indigo focus:outline-none";
+
+const cities = ["New York", "Los Angeles", "Chicago"];
+const trades = ["Plumbing", "Electrical", "HVAC", "Cleaning", "Lawncare", "General maintenance"];
 
 export default function VendorsPage() {
+  const [city, setCity] = useState("");
+  const [trade, setTrade] = useState("");
+  const [minRating, setMinRating] = useState("");
+
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const filters: VendorSearchFilters = {};
+    if (city) filters.city = city;
+    if (trade) filters.trade = trade;
+    if (minRating) filters.rating = Number(minRating);
+
+    setIsLoading(true);
+    setError(null);
+    getVendors(filters)
+      .then(setVendors)
+      .catch(() => setError("Could not load vendors. Please try again."))
+      .finally(() => setIsLoading(false));
+  }, [city, trade, minRating]);
+
+  const columns: TableColumn<Vendor>[] = [
+    {
+      key: "name",
+      header: "Name",
+      render: (vendor) => (
+        <Link href={`/vendors/${vendor.id}`} className="font-medium text-tavi-indigo underline">
+          {vendor.name}
+        </Link>
+      ),
+    },
+    { key: "trade", header: "Trade", render: (vendor) => vendor.trade },
+    { key: "city", header: "City", render: (vendor) => vendor.city ?? "—" },
+    {
+      key: "rating",
+      header: "Rating",
+      render: (vendor) => (vendor.rating !== null ? vendor.rating.toFixed(1) : "—"),
+    },
+    {
+      key: "quality_score",
+      header: "Quality",
+      render: (vendor) => <ScoreBadge label="Quality" score={vendor.quality_score} />,
+    },
+    {
+      key: "availability_score",
+      header: "Availability",
+      render: (vendor) => <ScoreBadge label="Availability" score={vendor.availability_score} />,
+    },
+    {
+      key: "risk_score",
+      header: "Risk",
+      render: (vendor) => <ScoreBadge label="Risk" score={vendor.risk_score} />,
+    },
+    {
+      key: "license_status",
+      header: "License",
+      render: (vendor) => vendor.license_status ?? "—",
+    },
+    {
+      key: "insurance_status",
+      header: "Insurance",
+      render: (vendor) => vendor.insurance_status ?? "—",
+    },
+  ];
+
   return (
     <AppShell>
       <div className="flex flex-col gap-6">
-        <h1 className="text-xl font-semibold text-zinc-900">Vendors</h1>
-        <EmptyState
-          title="No vendors found"
-          description="Search vendors in NYC, LA, or Chicago by trade, rating, license, and score."
-        />
+        <h1 className="text-xl font-semibold text-tavi-navy">Vendors</h1>
+
+        <form className="flex flex-wrap gap-3" onSubmit={(event) => event.preventDefault()}>
+          <select
+            aria-label="City"
+            value={city}
+            onChange={(event) => setCity(event.target.value)}
+            className={inputClassName}
+          >
+            <option value="">All cities</option>
+            {cities.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <select
+            aria-label="Trade"
+            value={trade}
+            onChange={(event) => setTrade(event.target.value)}
+            className={inputClassName}
+          >
+            <option value="">All trades</option>
+            {trades.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <input
+            aria-label="Minimum rating"
+            type="number"
+            min="0"
+            max="5"
+            step="0.1"
+            placeholder="Min rating"
+            value={minRating}
+            onChange={(event) => setMinRating(event.target.value)}
+            className={inputClassName}
+          />
+        </form>
+
+        {isLoading ? <LoadingState label="Loading vendors…" /> : null}
+        {error ? <ErrorState message={error} /> : null}
+        {!isLoading && !error && vendors.length === 0 ? (
+          <EmptyState
+            title="No vendors found"
+            description="Search vendors in NYC, LA, or Chicago by trade, rating, license, and score."
+          />
+        ) : null}
+        {!isLoading && !error && vendors.length > 0 ? (
+          <Table columns={columns} rows={vendors} getRowKey={(vendor) => vendor.id} />
+        ) : null}
       </div>
     </AppShell>
   );

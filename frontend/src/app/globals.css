@@ -2,21 +2,24 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #040f31;
+  --color-tavi-navy: #040f31;
+  --color-tavi-navy-dark: #001c55;
+  --color-tavi-indigo: #1d0446;
+  --color-tavi-lavender: #c5aafb;
+  --color-tavi-pale-blue: #d8eaff;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-tavi-navy: var(--color-tavi-navy);
+  --color-tavi-navy-dark: var(--color-tavi-navy-dark);
+  --color-tavi-indigo: var(--color-tavi-indigo);
+  --color-tavi-lavender: var(--color-tavi-lavender);
+  --color-tavi-pale-blue: var(--color-tavi-pale-blue);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {

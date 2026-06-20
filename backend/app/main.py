@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Dict, Any
@@ -10,8 +11,22 @@ from .database import engine, Base, get_db, SessionLocal
 from . import models, schemas
 from .seed import ensure_seed_db, seed_db
 
+def migrate_schema():
+    """Idempotently add columns introduced after the initial create_all, preserving existing rows."""
+    new_columns = {
+        "required_arrival_window_start": "DATETIME",
+        "required_arrival_window_end": "DATETIME",
+    }
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(work_orders)").fetchall()}
+        for name, col_type in new_columns.items():
+            if name not in existing:
+                conn.exec_driver_sql(f"ALTER TABLE work_orders ADD COLUMN {name} {col_type}")
+        conn.commit()
+
 def initialize_database():
     Base.metadata.create_all(bind=engine)
+    migrate_schema()
     with SessionLocal() as startup_db:
         ensure_seed_db(startup_db)
 
@@ -21,6 +36,13 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Tavi Hackathon Backend", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/health")
 @app.get("/")
@@ -105,6 +127,24 @@ def update_bidding_mode_if_needed(db: Session, work_order: models.WorkOrder):
         db.commit()
         create_wo_snapshot(db, work_order, actor_type="system", actor_name="Bidding Mode Evaluator")
 
+# ----------------- Facilities Endpoints -----------------
+
+@app.get("/api/facilities", response_model=List[schemas.FacilityOut])
+def list_facilities(db: Session = Depends(get_db)):
+    return db.query(models.Facility).all()
+
+@app.post("/api/facilities", response_model=schemas.FacilityOut, status_code=status.HTTP_201_CREATED)
+def create_facility(facility_in: schemas.FacilityCreate, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == facility_in.user_id).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    db_facility = models.Facility(**facility_in.model_dump())
+    db.add(db_facility)
+    db.commit()
+    db.refresh(db_facility)
+    return db_facility
+
 # ----------------- Work Orders Endpoints -----------------
 
 @app.post("/api/work-orders", response_model=schemas.WorkOrderOut, status_code=status.HTTP_201_CREATED)
@@ -129,6 +169,8 @@ def create_work_order(wo_in: schemas.WorkOrderCreate, db: Session = Depends(get_
         bid_deadline_at=wo_in.bid_deadline_at,
         urgency=wo_in.urgency,
         bidding_mode=wo_in.bidding_mode,
+        required_arrival_window_start=wo_in.required_arrival_window_start,
+        required_arrival_window_end=wo_in.required_arrival_window_end,
         selected_vendor_id=wo_in.selected_vendor_id,
         accepted_bid_id=wo_in.accepted_bid_id,
         accepted_price_cents=wo_in.accepted_price_cents,
