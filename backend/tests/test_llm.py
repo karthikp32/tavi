@@ -79,7 +79,7 @@ def test_session_creation_and_persistence(client, db_session):
     assert msgs[1].role == "assistant"
 
 def test_local_demo_mock_mode_trigger(client, db_session):
-    # Test that "plumber" triggers a mock search_vendors tool execution when API key is missing
+    # Test that missing API key returns a "model is unavailable" response
     with patch("app.llm.OPENROUTER_API_KEY", ""):
         payload = {
             "message": "I need a plumber in New York to fix a pipe leak"
@@ -87,9 +87,8 @@ def test_local_demo_mock_mode_trigger(client, db_session):
         response = client.post("/api/llm/messages", json=payload)
         assert response.status_code == 200
         data = response.json()
-        assert len(data["tool_calls"]) > 0
-        assert data["tool_calls"][0]["name"] == "search_vendors"
-        assert "New York" in data["response"]
+        assert len(data["tool_calls"]) == 0
+        assert "unavailable" in data["response"]
 
 def test_contact_tools_side_effects(db_session):
     # Manually trigger execute_tool for send_vendor_email

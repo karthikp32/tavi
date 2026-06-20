@@ -773,45 +773,14 @@ def run_llm_conversation(db: Session, chat_session: models.ChatSession, user_mes
 
     # Check if OPENROUTER_API_KEY is present
     if not OPENROUTER_API_KEY:
-        # Dry-run / mock demo mode if API key is missing
-        # If the prompt includes "plumber", let's mock asking a clarifying question or returning vendor list
-        logger.warning("No OPENROUTER_API_KEY found, running in mock local-demo mode.")
+        logger.error("OpenRouter API key is missing. Please set the OPENROUTER_API_KEY environment variable.")
+        error_msg = "The AI model is currently unavailable because the API key is missing. Please contact your system administrator."
         
-        mock_response = "Tavi LLM Demo Response (Simulated)"
-        if "plumber" in user_message.lower() or "pipe leak" in user_message.lower():
-            # Simulated tool execution to show it runs tools!
-            # Search vendors mock
-            mock_tools = [{
-                "id": "call_mock_1",
-                "type": "function",
-                "function": {
-                    "name": "search_vendors",
-                    "arguments": json.dumps({"city": "New York", "trade": "Plumbing", "task_type": "leak_repair"})
-                }
-            }]
-            
-            tool_outputs = []
-            for t in mock_tools:
-                args = json.loads(t["function"]["arguments"])
-                res = execute_tool(db, t["function"]["name"], args)
-                executed_tools_log.append({
-                    "name": t["function"]["name"],
-                    "arguments": args,
-                    "output": res
-                })
-                tool_outputs.append(res)
-                
-            mock_response = (
-                "I found matching Plumbing vendors in New York: " +
-                ", ".join([v["name"] for v in tool_outputs[0] if "name" in v][:3]) +
-                ". Would you like me to contact them to collect bids?"
-            )
-            
         db_msg_assistant = models.ChatMessage(
             chat_session_id=chat_session.id,
             work_order_id=chat_session.work_order_id,
             role="assistant",
-            body=mock_response,
+            body=error_msg,
             created_at=datetime.utcnow()
         )
         db.add(db_msg_assistant)
@@ -819,10 +788,10 @@ def run_llm_conversation(db: Session, chat_session: models.ChatSession, user_mes
         db.commit()
         
         return {
-            "response": mock_response,
+            "response": error_msg,
             "chat_session_id": chat_session.id,
             "work_order_id": chat_session.work_order_id,
-            "tool_calls": executed_tools_log
+            "tool_calls": []
         }
 
     # Multi-turn tool execution loop (runs up to 5 times to avoid infinite loop)
