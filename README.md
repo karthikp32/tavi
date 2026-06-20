@@ -55,15 +55,17 @@ Open [http://localhost:3000](http://localhost:3000). See `frontend/README.md` fo
    pip install -r requirements.txt
    ```
 
-### Seeding the Database
+### Database Seeding
 
-To create the SQLite database schema and populate it with mock companies, facilities, vendors, task stats, and availability blocks for New York, Los Angeles, and Chicago, run:
+The backend creates the SQLite schema and seeds mock companies, facilities, vendors, task stats, and availability blocks automatically on startup when the database is empty. You do not need to run a separate seed command for normal local development.
+
+The default SQLite URL is `sqlite:///./tavi.db`, so the file is created relative to the directory where you start the backend. If you run the backend from `backend/`, the file is `backend/tavi.db`.
+
+To intentionally reset and reseed the database, run:
 
 ```bash
 python -m app.seed
 ```
-
-This will create a `tavi.db` file in the `backend/` directory.
 
 ### Running the Backend
 
