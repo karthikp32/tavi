@@ -4,16 +4,33 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 from .database import SessionLocal, Base, engine
 from .models import (
+    AgentAction,
+    Bid,
+    ChatMessage,
+    ChatSession,
     Company,
+    CommunicationEvent,
     User,
     Facility,
     Vendor,
     VendorTaskStat,
     VendorAvailabilityBlock,
+    WorkOrder,
+    WorkOrderCandidate,
+    WorkOrderState,
 )
 
 def seed_db(db: Session):
     # Clear existing data to allow clean re-seeding
+    db.query(WorkOrder).update({WorkOrder.accepted_bid_id: None})
+    db.query(ChatMessage).delete()
+    db.query(ChatSession).delete()
+    db.query(AgentAction).delete()
+    db.query(Bid).delete()
+    db.query(CommunicationEvent).delete()
+    db.query(WorkOrderState).delete()
+    db.query(WorkOrderCandidate).delete()
+    db.query(WorkOrder).delete()
     db.query(VendorAvailabilityBlock).delete()
     db.query(VendorTaskStat).delete()
     db.query(Vendor).delete()

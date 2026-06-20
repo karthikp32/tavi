@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Dict, Any, Optional
+from fastapi import HTTPException
 import httpx
 from sqlalchemy.orm import Session
 
@@ -390,6 +391,8 @@ def execute_tool(db: Session, name: str, args: Dict[str, Any]) -> Any:
         trade = args.get("trade")
         task_type = args.get("task_type")
         target_budget = args.get("target_budget")
+        if target_budget is not None and target_budget <= 0:
+            return {"error": "target_budget must be greater than 0"}
         rating = args.get("rating")
         license_status = args.get("license_status")
         insurance_status = args.get("insurance_status")
@@ -570,6 +573,8 @@ def execute_tool(db: Session, name: str, args: Dict[str, Any]) -> Any:
         candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == candidate_id).first()
         if not candidate:
             return {"error": f"Candidate {candidate_id} not found"}
+        if candidate.work_order_id != wo_id:
+            return {"error": "Candidate does not belong to this work order"}
             
         db_bid = models.Bid(
             work_order_id=wo_id,
@@ -805,10 +810,21 @@ def run_llm_conversation(db: Session, chat_session: models.ChatSession, user_mes
                     
         except Exception as e:
             logger.error(f"Error during LLM conversation: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
             
     # Fallback response
     fallback_text = "I performed some actions but exceeded the execution limit. Please try again."
+    db_msg_assistant = models.ChatMessage(
+        chat_session_id=chat_session.id,
+        work_order_id=chat_session.work_order_id,
+        role="assistant",
+        body=fallback_text,
+        created_at=datetime.utcnow()
+    )
+    db.add(db_msg_assistant)
+    chat_session.updated_at = datetime.utcnow()
+    db.commit()
+
     return {
         "response": fallback_text,
         "chat_session_id": chat_session.id,

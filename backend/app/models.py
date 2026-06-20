@@ -94,7 +94,11 @@ class WorkOrder(Base):
     bidding_mode = Column(String, nullable=True)
 
     selected_vendor_id = Column(String, ForeignKey("vendors.id"), nullable=True)
-    accepted_bid_id = Column(String, nullable=True)
+    accepted_bid_id = Column(
+        String,
+        ForeignKey("bids.id", use_alter=True, name="fk_work_orders_accepted_bid_id"),
+        nullable=True,
+    )
     accepted_price_cents = Column(Integer, nullable=True)
     scheduled_start_at = Column(DateTime, nullable=True)
     confirmation_status = Column(String, nullable=True)
@@ -110,7 +114,12 @@ class WorkOrder(Base):
     states = relationship("WorkOrderState", back_populates="work_order", cascade="all, delete-orphan")
     candidates = relationship("WorkOrderCandidate", back_populates="work_order", cascade="all, delete-orphan")
     communication_events = relationship("CommunicationEvent", back_populates="work_order", cascade="all, delete-orphan")
-    bids = relationship("Bid", back_populates="work_order", cascade="all, delete-orphan")
+    bids = relationship(
+        "Bid",
+        back_populates="work_order",
+        cascade="all, delete-orphan",
+        foreign_keys="Bid.work_order_id",
+    )
     agent_actions = relationship("AgentAction", back_populates="work_order", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="work_order")
     chat_messages = relationship("ChatMessage", back_populates="work_order")
@@ -277,7 +286,7 @@ class Bid(Base):
     submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    work_order = relationship("WorkOrder", back_populates="bids")
+    work_order = relationship("WorkOrder", back_populates="bids", foreign_keys=[work_order_id])
     candidate = relationship("WorkOrderCandidate", back_populates="bids")
 
 class AgentAction(Base):

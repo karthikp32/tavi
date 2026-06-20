@@ -25,7 +25,7 @@ def seed_database(db: Session = Depends(get_db)):
         seed_db(db)
         return {"message": "Database seeded successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 # ----------------- Helper Functions -----------------
 
@@ -202,6 +202,9 @@ def list_vendors(
     min_price_fit: Optional[float] = Query(None),
     db: Session = Depends(get_db)
 ):
+    if target_budget is not None and target_budget <= 0:
+        raise HTTPException(status_code=400, detail="target_budget must be greater than 0")
+
     query = db.query(models.Vendor)
     
     if city:
@@ -322,7 +325,16 @@ def contact_vendor(
             next_action="awaiting response"
         )
         db.add(candidate)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            candidate = db.query(models.WorkOrderCandidate).filter(
+                models.WorkOrderCandidate.work_order_id == work_order_id,
+                models.WorkOrderCandidate.vendor_id == id
+            ).first()
+            if not candidate:
+                raise HTTPException(status_code=409, detail="Candidate already exists") from exc
         db.refresh(candidate)
     else:
         candidate.status = "contacted"
@@ -411,7 +423,17 @@ def create_candidate_endpoint(id: str, vendor_id: str = Query(...), db: Session 
         status="discovered"
     )
     db.add(c)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        existing = db.query(models.WorkOrderCandidate).filter(
+            models.WorkOrderCandidate.work_order_id == id,
+            models.WorkOrderCandidate.vendor_id == vendor_id
+        ).first()
+        if existing:
+            return existing
+        raise HTTPException(status_code=409, detail="Candidate already exists") from exc
     db.refresh(c)
     return c
 
@@ -505,6 +527,8 @@ def create_bid(id: str, bid: schemas.BidCreate, db: Session = Depends(get_db)):
     ).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    if candidate.work_order_id != id:
+        raise HTTPException(status_code=400, detail="Candidate does not belong to this work order")
         
     db_bid = models.Bid(
         work_order_id=id,
@@ -551,6 +575,14 @@ def patch_bid(id: str, bid_up: schemas.BidUpdate, db: Session = Depends(get_db))
     # If the status is updated to accepted, award the work order
     if up_data.get("status") == "accepted":
         wo = db_bid.work_order
+        previous_accepted_bids = db.query(models.Bid).filter(
+            models.Bid.work_order_id == wo.id,
+            models.Bid.id != db_bid.id,
+            models.Bid.status == "accepted"
+        ).all()
+        for previous_bid in previous_accepted_bids:
+            previous_bid.status = "rejected"
+
         wo.status = "awarded"
         wo.accepted_bid_id = db_bid.id
         wo.accepted_price_cents = db_bid.amount_cents
@@ -721,4 +753,3 @@ def post_llm_message(req: schemas.LlmMessageRequest, db: Session = Depends(get_d
         work_order_id=res["work_order_id"],
         tool_calls=res["tool_calls"]
     )
-

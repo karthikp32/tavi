@@ -24,12 +24,12 @@ def override_get_db():
         db.close()
 
 @pytest.fixture(autouse=True)
-def override_db():
+def override_db(setup_test_db):
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.pop(get_db, None)
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture
 def setup_test_db():
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
@@ -58,7 +58,8 @@ def test_session_creation_and_persistence(client, db_session):
     payload = {
         "message": "Hello, I need assistance managing my projects."
     }
-    response = client.post("/api/llm/messages", json=payload)
+    with patch("app.llm.OPENROUTER_API_KEY", ""):
+        response = client.post("/api/llm/messages", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["chat_session_id"] is not None
@@ -138,6 +139,67 @@ def test_contact_tools_side_effects(db_session):
     assert event is not None
     assert event.channel == "email"
     assert event.body == "Hi vendor, can you look at this email?"
+
+def test_create_bid_tool_rejects_candidate_from_other_work_order(db_session):
+    user = db_session.query(models.User).first()
+    facility = db_session.query(models.Facility).filter(models.Facility.user_id == user.id).first()
+    vendor = db_session.query(models.Vendor).first()
+
+    first_wo = models.WorkOrder(
+        user_id=user.id,
+        facility_id=facility.id,
+        title="First tool work order",
+        description="Original job",
+        trade="Cleaning",
+        status="collecting_bids",
+    )
+    second_wo = models.WorkOrder(
+        user_id=user.id,
+        facility_id=facility.id,
+        title="Second tool work order",
+        description="Different job",
+        trade="Cleaning",
+        status="collecting_bids",
+    )
+    db_session.add_all([first_wo, second_wo])
+    db_session.commit()
+
+    candidate = models.WorkOrderCandidate(
+        work_order_id=first_wo.id,
+        vendor_id=vendor.id,
+        status="discovered",
+    )
+    db_session.add(candidate)
+    db_session.commit()
+
+    res = llm.execute_tool(
+        db_session,
+        "create_bid",
+        {
+            "work_order_id": second_wo.id,
+            "work_order_candidate_id": candidate.id,
+            "amount_cents": 15000,
+            "status": "submitted",
+        },
+    )
+
+    assert res == {"error": "Candidate does not belong to this work order"}
+    db_session.refresh(candidate)
+    assert candidate.status == "discovered"
+    assert db_session.query(models.Bid).filter(models.Bid.work_order_id == second_wo.id).count() == 0
+
+def test_search_vendors_tool_rejects_non_positive_target_budget(db_session):
+    res = llm.execute_tool(
+        db_session,
+        "search_vendors",
+        {
+            "city": "New York",
+            "trade": "Plumbing",
+            "target_budget": 0,
+        },
+    )
+
+    assert res == {"error": "target_budget must be greater than 0"}
 
 def test_multi_turn_tool_execution_loop(client, db_session):
     # Mock OpenRouter API call returning a tool call first, then a text response
@@ -222,3 +284,57 @@ def test_multi_turn_tool_execution_loop(client, db_session):
             ).first()
             assert wo is not None
             assert wo.status == "ready_for_vendor_discovery"
+
+def test_fallback_response_is_persisted(client, db_session):
+    user = db_session.query(models.User).first()
+    chat_session = models.ChatSession(
+        user_id=user.id,
+        status="active"
+    )
+    db_session.add(chat_session)
+    db_session.commit()
+
+    tool_response = MagicMock()
+    tool_response.status_code = 200
+    tool_response.json.return_value = {
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": "call_loop",
+                    "type": "function",
+                    "function": {
+                        "name": "get_work_order",
+                        "arguments": json.dumps({"id": "missing-work-order"})
+                    }
+                }]
+            }
+        }]
+    }
+
+    with patch("app.llm.OPENROUTER_API_KEY", "mock_key"):
+        with patch("app.llm.httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value.__enter__.return_value = mock_client
+            mock_client.post.return_value = tool_response
+
+            response = client.post(
+                "/api/llm/messages",
+                json={
+                    "chat_session_id": chat_session.id,
+                    "message": "Keep calling tools",
+                },
+            )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["response"] == "I performed some actions but exceeded the execution limit. Please try again."
+
+    db_session.expire_all()
+    assistant_message = db_session.query(models.ChatMessage).filter(
+        models.ChatMessage.chat_session_id == chat_session.id,
+        models.ChatMessage.role == "assistant",
+        models.ChatMessage.body == data["response"],
+    ).first()
+    assert assistant_message is not None

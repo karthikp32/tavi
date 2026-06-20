@@ -25,12 +25,12 @@ def override_get_db():
         db.close()
 
 @pytest.fixture(autouse=True)
-def override_db():
+def override_db(setup_test_db):
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.pop(get_db, None)
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture
 def setup_test_db():
     # Create tables
     Base.metadata.create_all(bind=engine)
@@ -132,18 +132,10 @@ def test_vendor_search_filters_and_price_fit(client, db_session):
     
     # Check that price fit is calculated dynamically and attached
     for v in vendors:
-        # In NYC Plumbing leak_repair, the seeded price is $300.00 (30000 cents)
-        # Verify the vendor has a price_fit attribute
-        # Note: We return it as a list of VendorOut, but we can verify it on the models or response
-        # Let's inspect the returned JSON structure. Wait, VendorOut schema doesn't have price_fit!
-        # Ah! Let's check schemas.py: does VendorOut have price_fit?
-        # No, VendorOut inherits VendorBase which doesn't have price_fit.
-        # But wait! We attached `price_fit` dynamically to the model in main.py, but it won't be serialized in response unless we include it in VendorOut!
-        # Oh, let's look at the vendor profile requirements: "price fit for the selected task type, if available".
-        # Yes, we should probably add price_fit to VendorOut schema!
-        # Wait, if we add price_fit: Optional[float] = None to VendorOut, then it will be serialized.
-        # Let's check if the search endpoint filters work first.
-        pass
+        assert v["city"] == "New York"
+        assert v["trade"] == "Plumbing"
+        assert "price_fit" in v
+        assert v["price_fit"] is not None
 
     # Let's test with a budget filter
     # Seeded NYC Plumbing leak_repair price is 30000. If we query with target_budget=40000, price_fit should be 1.0.
@@ -153,6 +145,11 @@ def test_vendor_search_filters_and_price_fit(client, db_session):
     assert response_fit.status_code == 200
     vendors_fit = response_fit.json()
     assert len(vendors_fit) > 0
+    assert all(v["price_fit"] >= 0.9 for v in vendors_fit)
+
+    response_bad_budget = client.get("/api/vendors?city=New York&trade=Plumbing&target_budget=0")
+    assert response_bad_budget.status_code == 400
+    assert response_bad_budget.json()["detail"] == "target_budget must be greater than 0"
 
 def test_candidate_creation_idempotency(client, db_session):
     # Get seeded user, facility, vendor
@@ -270,6 +267,100 @@ def test_bid_creation_and_work_order_award(client, db_session):
     # Candidate status should now be selected
     db_session.refresh(candidate)
     assert candidate.status == "selected"
+
+def test_bid_creation_rejects_candidate_from_other_work_order(client, db_session):
+    user = db_session.query(models.User).first()
+    facility = db_session.query(models.Facility).filter(models.Facility.user_id == user.id).first()
+    vendor = db_session.query(models.Vendor).first()
+
+    first_payload = {
+        "user_id": user.id,
+        "facility_id": facility.id,
+        "title": "First work order",
+        "description": "Original job",
+        "trade": "Cleaning",
+        "status": "collecting_bids",
+    }
+    second_payload = {
+        "user_id": user.id,
+        "facility_id": facility.id,
+        "title": "Second work order",
+        "description": "Different job",
+        "trade": "Cleaning",
+        "status": "collecting_bids",
+    }
+    first_response = client.post("/api/work-orders", json=first_payload)
+    second_response = client.post("/api/work-orders", json=second_payload)
+    first_id = first_response.json()["id"]
+    second_id = second_response.json()["id"]
+
+    candidate_response = client.post(f"/api/work-orders/{first_id}/candidates?vendor_id={vendor.id}")
+    candidate_id = candidate_response.json()["id"]
+
+    response = client.post(
+        f"/api/work-orders/{second_id}/bids",
+        json={
+            "work_order_id": second_id,
+            "work_order_candidate_id": candidate_id,
+            "amount_cents": 15000,
+            "status": "submitted",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Candidate does not belong to this work order"
+
+    candidate = db_session.query(models.WorkOrderCandidate).filter(
+        models.WorkOrderCandidate.id == candidate_id
+    ).first()
+    assert candidate.status == "discovered"
+    assert db_session.query(models.Bid).filter(models.Bid.work_order_id == second_id).count() == 0
+
+def test_accepting_new_bid_rejects_previous_accepted_bid(client, db_session):
+    user = db_session.query(models.User).first()
+    facility = db_session.query(models.Facility).filter(models.Facility.user_id == user.id).first()
+    vendors = db_session.query(models.Vendor).limit(2).all()
+
+    wo_payload = {
+        "user_id": user.id,
+        "facility_id": facility.id,
+        "title": "Award replacement",
+        "description": "Award one bid, then replace it",
+        "trade": "Cleaning",
+        "status": "collecting_bids",
+    }
+    response_wo = client.post("/api/work-orders", json=wo_payload)
+    wo_id = response_wo.json()["id"]
+
+    candidate_ids = []
+    for vendor in vendors:
+        response_c = client.post(f"/api/work-orders/{wo_id}/candidates?vendor_id={vendor.id}")
+        candidate_ids.append(response_c.json()["id"])
+
+    bid_ids = []
+    for idx, candidate_id in enumerate(candidate_ids):
+        response_bid = client.post(
+            f"/api/work-orders/{wo_id}/bids",
+            json={
+                "work_order_id": wo_id,
+                "work_order_candidate_id": candidate_id,
+                "amount_cents": 15000 + idx,
+                "status": "submitted",
+            },
+        )
+        assert response_bid.status_code == 201
+        bid_ids.append(response_bid.json()["id"])
+
+    assert client.patch(f"/api/bids/{bid_ids[0]}", json={"status": "accepted"}).status_code == 200
+    assert client.patch(f"/api/bids/{bid_ids[1]}", json={"status": "accepted"}).status_code == 200
+
+    first_bid = db_session.query(models.Bid).filter(models.Bid.id == bid_ids[0]).first()
+    second_bid = db_session.query(models.Bid).filter(models.Bid.id == bid_ids[1]).first()
+    work_order = db_session.query(models.WorkOrder).filter(models.WorkOrder.id == wo_id).first()
+
+    assert first_bid.status == "rejected"
+    assert second_bid.status == "accepted"
+    assert work_order.accepted_bid_id == second_bid.id
 
 def test_timeline_endpoint(client, db_session):
     user = db_session.query(models.User).first()
