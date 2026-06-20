@@ -559,6 +559,8 @@ def tool_contact_vendor(db: Session, vendor_id: str, work_order_id: str, channel
         direction="outbound",
         actor_type="agent",
         actor_name="Tavi Agent",
+        sender_id=kwargs.get("sender_id"),
+        sender_type=kwargs.get("sender_type", "agent"),
         body=body,
         created_at=datetime.utcnow()
     )
@@ -567,7 +569,7 @@ def tool_contact_vendor(db: Session, vendor_id: str, work_order_id: str, channel
     db.refresh(event)
     return serialize_model(event)
 
-def _send_outbound_communication(db: Session, candidate_id: str, channel: str, body: str) -> Dict[str, Any]:
+def _send_outbound_communication(db: Session, candidate_id: str, channel: str, body: str, **kwargs) -> Dict[str, Any]:
     candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == candidate_id).first()
     if not candidate:
         return {"error": f"Candidate {candidate_id} not found"}
@@ -584,6 +586,8 @@ def _send_outbound_communication(db: Session, candidate_id: str, channel: str, b
         direction="outbound",
         actor_type="agent",
         actor_name="Tavi Agent",
+        sender_id=kwargs.get("sender_id"),
+        sender_type=kwargs.get("sender_type", "agent"),
         body=body,
         created_at=datetime.utcnow()
     )
@@ -593,13 +597,13 @@ def _send_outbound_communication(db: Session, candidate_id: str, channel: str, b
     return serialize_model(event)
 
 def tool_send_vendor_email(db: Session, candidate_id: str, body: str, **kwargs) -> Dict[str, Any]:
-    return _send_outbound_communication(db, candidate_id, "email", body)
+    return _send_outbound_communication(db, candidate_id, "email", body, **kwargs)
 
 def tool_send_vendor_text(db: Session, candidate_id: str, body: str, **kwargs) -> Dict[str, Any]:
-    return _send_outbound_communication(db, candidate_id, "sms", body)
+    return _send_outbound_communication(db, candidate_id, "sms", body, **kwargs)
 
 def tool_log_vendor_call(db: Session, candidate_id: str, body: str, **kwargs) -> Dict[str, Any]:
-    return _send_outbound_communication(db, candidate_id, "phone", body)
+    return _send_outbound_communication(db, candidate_id, "phone", body, **kwargs)
 
 def tool_create_bid(
     db: Session,

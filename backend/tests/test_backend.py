@@ -3,7 +3,7 @@ import pytest
 from datetime import datetime, timedelta
 from decimal import Decimal
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, get_db
@@ -130,6 +130,45 @@ def test_startup_seed_preserves_existing_sqlite_data(tmp_path, monkeypatch):
         db.close()
         Base.metadata.drop_all(bind=startup_engine)
         startup_engine.dispose()
+
+def test_startup_adds_sender_columns_to_existing_sqlite_table(tmp_path, monkeypatch):
+    db_path = tmp_path / "old_schema.db"
+    startup_engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    StartupSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=startup_engine)
+
+    with startup_engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE communication_events (
+                id VARCHAR PRIMARY KEY,
+                work_order_id VARCHAR NOT NULL,
+                work_order_candidate_id VARCHAR,
+                channel VARCHAR NOT NULL,
+                direction VARCHAR NOT NULL,
+                actor_type VARCHAR NOT NULL,
+                actor_name VARCHAR,
+                body VARCHAR NOT NULL,
+                metadata JSON,
+                created_at DATETIME NOT NULL
+            )
+        """))
+
+    monkeypatch.setattr("app.main.engine", startup_engine)
+    monkeypatch.setattr("app.main.SessionLocal", StartupSessionLocal)
+
+    with TestClient(app) as startup_client:
+        assert startup_client.get("/health").status_code == 200
+
+    columns = {
+        column["name"] for column in inspect(startup_engine).get_columns("communication_events")
+    }
+    assert "sender_id" in columns
+    assert "sender_type" in columns
+
+    Base.metadata.drop_all(bind=startup_engine)
+    startup_engine.dispose()
 
 def test_work_order_lifecycle_and_snapshots(client, db_session):
     # 1. Create a work order
@@ -263,12 +302,14 @@ def test_contact_actions(client, db_session):
     
     # Contact vendor (this should create a candidate and communication event)
     response_contact = client.post(
-        f"/api/vendors/{vendor.id}/contact?work_order_id={wo_id}&channel=email&body=Need HVAC repair detail"
+        f"/api/vendors/{vendor.id}/contact?work_order_id={wo_id}&channel=email&body=Need HVAC repair detail&sender_id={user.id}&sender_type=facility_manager"
     )
     assert response_contact.status_code == 200
     event = response_contact.json()
     assert event["channel"] == "email"
     assert event["body"] == "Need HVAC repair detail"
+    assert event["sender_id"] == user.id
+    assert event["sender_type"] == "facility_manager"
     
     # Verify candidate exists and status is contact_pending / contacted
     candidate = db_session.query(models.WorkOrderCandidate).filter(
@@ -277,6 +318,41 @@ def test_contact_actions(client, db_session):
     ).first()
     assert candidate is not None
     assert candidate.last_contacted_at is not None
+
+def test_candidate_communications_store_sender_identity(client, db_session):
+    user = db_session.query(models.User).first()
+    facility = db_session.query(models.Facility).filter(models.Facility.user_id == user.id).first()
+    vendor = db_session.query(models.Vendor).first()
+
+    wo_payload = {
+        "user_id": user.id,
+        "facility_id": facility.id,
+        "title": "Sender identity",
+        "description": "Verify communication senders",
+        "trade": "HVAC",
+        "status": "draft"
+    }
+    response_wo = client.post("/api/work-orders", json=wo_payload)
+    wo_id = response_wo.json()["id"]
+    response_c = client.post(f"/api/work-orders/{wo_id}/candidates?vendor_id={vendor.id}")
+    candidate_id = response_c.json()["id"]
+
+    outbound = client.post(
+        f"/api/work-order-candidates/{candidate_id}/contact"
+        f"?channel=email&body=Can you quote this?&sender_id={user.id}&sender_type=facility_manager"
+    )
+    assert outbound.status_code == 200
+    outbound_event = outbound.json()
+    assert outbound_event["sender_id"] == user.id
+    assert outbound_event["sender_type"] == "facility_manager"
+
+    inbound = client.post(
+        f"/api/work-order-candidates/{candidate_id}/messages?channel=sms&body=Yes, I can quote it"
+    )
+    assert inbound.status_code == 200
+    inbound_event = inbound.json()
+    assert inbound_event["sender_id"] == vendor.id
+    assert inbound_event["sender_type"] == "vendor"
 
 def test_bid_creation_and_work_order_award(client, db_session):
     user = db_session.query(models.User).first()

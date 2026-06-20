@@ -139,6 +139,7 @@ def test_contact_tools_side_effects(db_session):
     assert event is not None
     assert event.channel == "email"
     assert event.body == "Hi vendor, can you look at this email?"
+    assert event.sender_type == "agent"
 
 def test_create_bid_tool_rejects_candidate_from_other_work_order(db_session):
     user = db_session.query(models.User).first()

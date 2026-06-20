@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -12,8 +13,28 @@ from .seed import ensure_seed_db, seed_db
 
 def initialize_database():
     Base.metadata.create_all(bind=engine)
+    ensure_communication_event_sender_columns()
     with SessionLocal() as startup_db:
         ensure_seed_db(startup_db)
+
+def ensure_communication_event_sender_columns():
+    inspector = inspect(engine)
+    if not inspector.has_table("communication_events"):
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("communication_events")
+    }
+    columns_to_add = [
+        column for column in ("sender_id", "sender_type")
+        if column not in existing_columns
+    ]
+    if not columns_to_add:
+        return
+
+    with engine.begin() as connection:
+        for column in columns_to_add:
+            connection.execute(text(f"ALTER TABLE communication_events ADD COLUMN {column} VARCHAR"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -306,6 +327,8 @@ def contact_vendor(
     direction: str = Query("outbound"),
     actor_type: str = Query("facility_manager"),
     actor_name: Optional[str] = Query(None),
+    sender_id: Optional[str] = Query(None),
+    sender_type: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     # Verify vendor exists
@@ -359,6 +382,8 @@ def contact_vendor(
         direction=direction,
         actor_type=actor_type,
         actor_name=actor_name,
+        sender_id=sender_id,
+        sender_type=sender_type or actor_type,
         body=body,
         created_at=datetime.utcnow()
     )
@@ -453,6 +478,8 @@ def contact_candidate_direct(
     direction: str = Query("outbound"),
     actor_type: str = Query("facility_manager"),
     actor_name: Optional[str] = Query(None),
+    sender_id: Optional[str] = Query(None),
+    sender_type: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     c = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == id).first()
@@ -472,6 +499,8 @@ def contact_candidate_direct(
         direction=direction,
         actor_type=actor_type,
         actor_name=actor_name,
+        sender_id=sender_id,
+        sender_type=sender_type or actor_type,
         body=body,
         created_at=datetime.utcnow()
     )
@@ -504,6 +533,8 @@ def message_candidate_inbound(
         direction="inbound",
         actor_type="vendor",
         actor_name=c.vendor.name,
+        sender_id=c.vendor_id,
+        sender_type="vendor",
         body=body,
         created_at=datetime.utcnow()
     )
