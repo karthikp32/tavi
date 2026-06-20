@@ -73,7 +73,7 @@ TOOLS = [
                     "urgency": {"type": "string", "enum": ["low", "normal", "high", "emergency"]},
                     "target_budget_cents": {"type": "integer", "description": "Target budget in cents."}
                 },
-                "required": ["user_id", "title", "description", "trade", "status"]
+                "required": ["user_id", "title", "description", "trade"]
             }
         }
     },
@@ -318,7 +318,7 @@ def execute_tool(db: Session, name: str, args: Dict[str, Any]) -> Any:
             description=args["description"],
             trade=args["trade"],
             task_type=args.get("task_type"),
-            status=args["status"],
+            status=args.get("status", "draft"),
             urgency=args.get("urgency"),
             target_budget_cents=args.get("target_budget_cents")
         )
