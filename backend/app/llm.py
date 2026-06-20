@@ -305,342 +305,431 @@ def serialize_model(obj) -> Dict[str, Any]:
 
 # ----------------- Tool Dispatcher Implementation -----------------
 
-def execute_tool(db: Session, name: str, args: Dict[str, Any]) -> Any:
-    from .main import create_wo_snapshot, update_bidding_mode_if_needed
-    logger.info(f"Executing tool {name} with args {args}")
+# ----------------- Separate Tool Functions -----------------
+
+def tool_create_work_order(
+    db: Session,
+    user_id: str,
+    title: str,
+    description: str,
+    trade: str,
+    facility_id: Optional[str] = None,
+    company_id: Optional[str] = None,
+    task_type: Optional[str] = None,
+    status: str = "draft",
+    urgency: Optional[str] = None,
+    target_budget_cents: Optional[int] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    from .main import create_wo_snapshot
+    db_wo = models.WorkOrder(
+        user_id=user_id,
+        facility_id=facility_id,
+        company_id=company_id,
+        title=title,
+        description=description,
+        trade=trade,
+        task_type=task_type,
+        status=status,
+        urgency=urgency,
+        target_budget_cents=target_budget_cents
+    )
+    db.add(db_wo)
+    db.commit()
+    db.refresh(db_wo)
+    create_wo_snapshot(db, db_wo, actor_type="agent", actor_name="Tavi Tool Agent")
+    return serialize_model(db_wo)
+
+def tool_update_work_order(
+    db: Session,
+    id: str,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    trade: Optional[str] = None,
+    task_type: Optional[str] = None,
+    status: Optional[str] = None,
+    target_budget_cents: Optional[int] = None,
+    max_price_cents: Optional[int] = None,
+    urgency: Optional[str] = None,
+    selected_vendor_id: Optional[str] = None,
+    accepted_bid_id: Optional[str] = None,
+    accepted_price_cents: Optional[int] = None,
+    scheduled_start_at: Optional[str] = None,
+    confirmation_status: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    from .main import create_wo_snapshot
+    wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
+    if not wo:
+        return {"error": f"Work order {id} not found"}
+        
+    important_fields = {
+        "status", "title", "description", "trade", "task_type",
+        "target_budget_cents", "max_price_cents", "selected_vendor_id",
+        "accepted_bid_id", "accepted_price_cents", "scheduled_start_at",
+        "completed_vendor_quality_score"
+    }
     
-    if name == "create_work_order":
-        db_wo = models.WorkOrder(
-            user_id=args["user_id"],
-            facility_id=args.get("facility_id"),
-            company_id=args.get("company_id"),
-            title=args["title"],
-            description=args["description"],
-            trade=args["trade"],
-            task_type=args.get("task_type"),
-            status=args.get("status", "draft"),
-            urgency=args.get("urgency"),
-            target_budget_cents=args.get("target_budget_cents")
-        )
-        db.add(db_wo)
-        db.commit()
-        db.refresh(db_wo)
-        create_wo_snapshot(db, db_wo, actor_type="agent", actor_name="Tavi Tool Agent")
-        return serialize_model(db_wo)
-        
-    elif name == "update_work_order":
-        wo_id = args["id"]
-        wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == wo_id).first()
-        if not wo:
-            return {"error": f"Work order {wo_id} not found"}
+    updates = {}
+    for k, v in kwargs.items():
+        updates[k] = v
+    for k, v in [
+        ("title", title), ("description", description), ("trade", trade),
+        ("task_type", task_type), ("status", status), ("target_budget_cents", target_budget_cents),
+        ("max_price_cents", max_price_cents), ("urgency", urgency),
+        ("selected_vendor_id", selected_vendor_id), ("accepted_bid_id", accepted_bid_id),
+        ("accepted_price_cents", accepted_price_cents), ("scheduled_start_at", scheduled_start_at),
+        ("confirmation_status", confirmation_status)
+    ]:
+        if v is not None:
+            updates[k] = v
             
-        important_fields = {
-            "status", "title", "description", "trade", "task_type",
-            "target_budget_cents", "max_price_cents", "selected_vendor_id",
-            "accepted_bid_id", "accepted_price_cents", "scheduled_start_at",
-            "completed_vendor_quality_score"
-        }
-        changed = False
-        for key, val in args.items():
-            if key == "id":
-                continue
-            if key in important_fields:
-                curr = getattr(wo, key)
-                if key == "scheduled_start_at" and val:
-                    val = datetime.fromisoformat(val.replace("Z", ""))
-                if curr != val:
-                    changed = True
-            setattr(wo, key, val)
+    changed = False
+    for key, val in updates.items():
+        if key == "id":
+            continue
+        if key == "scheduled_start_at" and val:
+            if isinstance(val, str):
+                val = datetime.fromisoformat(val.replace("Z", ""))
+        if key in important_fields:
+            curr = getattr(wo, key)
+            if curr != val:
+                changed = True
+        setattr(wo, key, val)
             
-        wo.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(wo)
+    wo.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(wo)
+    
+    if changed:
+        create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
         
-        if changed:
-            create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
+    return serialize_model(wo)
+
+def tool_get_work_order(db: Session, id: str, **kwargs) -> Dict[str, Any]:
+    wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
+    if not wo:
+        return {"error": f"Work order {id} not found"}
+    res = serialize_model(wo)
+    res["candidate_count"] = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.work_order_id == id).count()
+    res["bid_count"] = db.query(models.Bid).filter(models.Bid.work_order_id == id).count()
+    return res
+
+def tool_get_work_order_bids(db: Session, work_order_id: str, **kwargs) -> List[Dict[str, Any]]:
+    bids = db.query(models.Bid).filter(models.Bid.work_order_id == work_order_id).all()
+    return [serialize_model(b) for b in bids]
+
+def tool_get_work_order_candidates(db: Session, work_order_id: str, **kwargs) -> List[Dict[str, Any]]:
+    candidates = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.work_order_id == work_order_id).all()
+    res = []
+    for c in candidates:
+        c_dict = serialize_model(c)
+        c_dict["vendor"] = serialize_model(c.vendor)
+        res.append(c_dict)
+    return res
+
+def tool_search_vendors(
+    db: Session,
+    city: Optional[str] = None,
+    trade: Optional[str] = None,
+    task_type: Optional[str] = None,
+    target_budget: Optional[int] = None,
+    rating: Optional[float] = None,
+    license_status: Optional[str] = None,
+    insurance_status: Optional[str] = None,
+    quality_score: Optional[float] = None,
+    availability_score: Optional[float] = None,
+    risk_score: Optional[float] = None,
+    min_price_fit: Optional[float] = None,
+    **kwargs
+) -> Any:
+    if target_budget is not None and target_budget <= 0:
+        return {"error": "target_budget must be greater than 0"}
+        
+    query = db.query(models.Vendor)
+    if city:
+        query = query.filter(models.Vendor.city.ilike(city))
+    if trade:
+        query = query.filter(models.Vendor.trade.ilike(trade))
+    if rating is not None:
+        query = query.filter(models.Vendor.rating >= rating)
+    if license_status:
+        query = query.filter(models.Vendor.license_status == license_status)
+    if insurance_status:
+        query = query.filter(models.Vendor.insurance_status == insurance_status)
+    if quality_score is not None:
+        query = query.filter(models.Vendor.quality_score >= quality_score)
+    if availability_score is not None:
+        query = query.filter(models.Vendor.availability_score >= availability_score)
+    if risk_score is not None:
+        query = query.filter(models.Vendor.risk_score <= risk_score)
+        
+    vendors = query.all()
+    
+    if trade and city:
+        stats = db.query(models.VendorTaskStat).filter(
+            models.VendorTaskStat.trade.ilike(trade),
+            models.VendorTaskStat.city.ilike(city)
+        ).all()
+        if task_type:
+            stats = [s for s in stats if s.task_type.lower() == task_type.lower()]
             
-        return serialize_model(wo)
+        stats_by_vendor = {s.vendor_id: s.median_price_cents for s in stats}
         
-    elif name == "get_work_order":
-        wo_id = args["id"]
-        wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == wo_id).first()
-        if not wo:
-            return {"error": f"Work order {wo_id} not found"}
-        res = serialize_model(wo)
-        res["candidate_count"] = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.work_order_id == wo_id).count()
-        res["bid_count"] = db.query(models.Bid).filter(models.Bid.work_order_id == wo_id).count()
-        return res
-        
-    elif name == "get_work_order_bids":
-        wo_id = args["work_order_id"]
-        bids = db.query(models.Bid).filter(models.Bid.work_order_id == wo_id).all()
-        return [serialize_model(b) for b in bids]
-        
-    elif name == "get_work_order_candidates":
-        wo_id = args["work_order_id"]
-        candidates = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.work_order_id == wo_id).all()
-        res = []
-        for c in candidates:
-            c_dict = serialize_model(c)
-            c_dict["vendor"] = serialize_model(c.vendor)
-            res.append(c_dict)
-        return res
-        
-    elif name == "search_vendors":
-        city = args.get("city")
-        trade = args.get("trade")
-        task_type = args.get("task_type")
-        target_budget = args.get("target_budget")
-        if target_budget is not None and target_budget <= 0:
-            return {"error": "target_budget must be greater than 0"}
-        rating = args.get("rating")
-        license_status = args.get("license_status")
-        insurance_status = args.get("insurance_status")
-        quality_score = args.get("quality_score")
-        availability_score = args.get("availability_score")
-        risk_score = args.get("risk_score")
-        min_price_fit = args.get("min_price_fit")
-        
-        query = db.query(models.Vendor)
-        if city:
-            query = query.filter(models.Vendor.city.ilike(city))
-        if trade:
-            query = query.filter(models.Vendor.trade.ilike(trade))
-        if rating is not None:
-            query = query.filter(models.Vendor.rating >= rating)
-        if license_status:
-            query = query.filter(models.Vendor.license_status == license_status)
-        if insurance_status:
-            query = query.filter(models.Vendor.insurance_status == insurance_status)
-        if quality_score is not None:
-            query = query.filter(models.Vendor.quality_score >= quality_score)
-        if availability_score is not None:
-            query = query.filter(models.Vendor.availability_score >= availability_score)
-        if risk_score is not None:
-            query = query.filter(models.Vendor.risk_score <= risk_score)
+        avg_median = 0
+        if stats_by_vendor and target_budget is None:
+            avg_median = sum(stats_by_vendor.values()) / len(stats_by_vendor)
             
-        vendors = query.all()
-        
-        # Calculate price fit dynamically if trade and city are specified
-        if trade and city:
-            stats = db.query(models.VendorTaskStat).filter(
-                models.VendorTaskStat.trade.ilike(trade),
-                models.VendorTaskStat.city.ilike(city)
-            ).all()
-            if task_type:
-                stats = [s for s in stats if s.task_type.lower() == task_type.lower()]
-                
-            stats_by_vendor = {s.vendor_id: s.median_price_cents for s in stats}
-            
-            avg_median = 0
-            if stats_by_vendor and target_budget is None:
-                avg_median = sum(stats_by_vendor.values()) / len(stats_by_vendor)
-                
-            filtered = []
-            for v in vendors:
-                median_price = stats_by_vendor.get(v.id)
-                if median_price is None:
-                    price_fit = None
-                else:
-                    if target_budget is not None:
-                        if median_price <= target_budget:
-                            price_fit = 1.0
-                        else:
-                            price_fit = float(max(Decimal("0.0"), Decimal("1.0") - Decimal(median_price - target_budget) / Decimal(target_budget)))
+        filtered = []
+        for v in vendors:
+            median_price = stats_by_vendor.get(v.id)
+            if median_price is None:
+                price_fit = None
+            else:
+                if target_budget is not None:
+                    if median_price <= target_budget:
+                        price_fit = 1.0
                     else:
-                        if avg_median == 0:
-                            price_fit = 1.0
-                        elif median_price <= avg_median:
-                            price_fit = 1.0
-                        else:
-                            price_fit = float(max(Decimal("0.0"), Decimal("1.0") - Decimal(median_price - avg_median) / Decimal(avg_median)))
-                
-                v_dict = serialize_model(v)
-                v_dict["price_fit"] = price_fit
-                
-                if min_price_fit is not None:
-                    if price_fit is None or price_fit < min_price_fit:
-                        continue
-                filtered.append(v_dict)
-            return filtered
+                        price_fit = float(max(Decimal("0.0"), Decimal("1.0") - Decimal(median_price - target_budget) / Decimal(target_budget)))
+                else:
+                    if avg_median == 0:
+                        price_fit = 1.0
+                    elif median_price <= avg_median:
+                        price_fit = 1.0
+                    else:
+                        price_fit = float(max(Decimal("0.0"), Decimal("1.0") - Decimal(median_price - avg_median) / Decimal(avg_median)))
             
-        if min_price_fit is not None:
-            return []
+            v_dict = serialize_model(v)
+            v_dict["price_fit"] = price_fit
             
-        return [serialize_model(v) for v in vendors]
+            if min_price_fit is not None:
+                if price_fit is None or price_fit < min_price_fit:
+                    continue
+            filtered.append(v_dict)
+        return filtered
         
-    elif name == "create_work_order_candidate":
-        wo_id = args["work_order_id"]
-        vendor_id = args["vendor_id"]
+    if min_price_fit is not None:
+        return []
         
-        existing = db.query(models.WorkOrderCandidate).filter(
-            models.WorkOrderCandidate.work_order_id == wo_id,
-            models.WorkOrderCandidate.vendor_id == vendor_id
-        ).first()
-        if existing:
-            return serialize_model(existing)
-            
-        c = models.WorkOrderCandidate(
-            work_order_id=wo_id,
+    return [serialize_model(v) for v in vendors]
+
+def tool_create_work_order_candidate(db: Session, work_order_id: str, vendor_id: str, **kwargs) -> Dict[str, Any]:
+    existing = db.query(models.WorkOrderCandidate).filter(
+        models.WorkOrderCandidate.work_order_id == work_order_id,
+        models.WorkOrderCandidate.vendor_id == vendor_id
+    ).first()
+    if existing:
+        return serialize_model(existing)
+        
+    c = models.WorkOrderCandidate(
+        work_order_id=work_order_id,
+        vendor_id=vendor_id,
+        status="discovered"
+    )
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return serialize_model(c)
+
+def tool_contact_vendor(db: Session, vendor_id: str, work_order_id: str, channel: str, body: str, **kwargs) -> Dict[str, Any]:
+    candidate = db.query(models.WorkOrderCandidate).filter(
+        models.WorkOrderCandidate.work_order_id == work_order_id,
+        models.WorkOrderCandidate.vendor_id == vendor_id
+    ).first()
+    if not candidate:
+        candidate = models.WorkOrderCandidate(
+            work_order_id=work_order_id,
             vendor_id=vendor_id,
-            status="discovered"
+            status="contact_pending",
+            last_contacted_at=datetime.utcnow(),
+            next_action="awaiting response"
         )
-        db.add(c)
+        db.add(candidate)
         db.commit()
-        db.refresh(c)
-        return serialize_model(c)
-        
-    elif name == "contact_vendor":
-        vendor_id = args["vendor_id"]
-        wo_id = args["work_order_id"]
-        channel = args["channel"]
-        body = args["body"]
-        
-        candidate = db.query(models.WorkOrderCandidate).filter(
-            models.WorkOrderCandidate.work_order_id == wo_id,
-            models.WorkOrderCandidate.vendor_id == vendor_id
-        ).first()
-        if not candidate:
-            candidate = models.WorkOrderCandidate(
-                work_order_id=wo_id,
-                vendor_id=vendor_id,
-                status="contact_pending",
-                last_contacted_at=datetime.utcnow(),
-                next_action="awaiting response"
-            )
-            db.add(candidate)
-            db.commit()
-            db.refresh(candidate)
-        else:
-            candidate.status = "contacted"
-            candidate.last_contacted_at = datetime.utcnow()
-            candidate.next_action = "awaiting response"
-            db.commit()
-            
-        event = models.CommunicationEvent(
-            work_order_id=wo_id,
-            work_order_candidate_id=candidate.id,
-            channel=channel,
-            direction="outbound",
-            actor_type="agent",
-            actor_name="Tavi Agent",
-            body=body,
-            created_at=datetime.utcnow()
-        )
-        db.add(event)
-        db.commit()
-        db.refresh(event)
-        return serialize_model(event)
-        
-    elif name in ("send_vendor_email", "send_vendor_text", "log_vendor_call"):
-        candidate_id = args["candidate_id"]
-        body = args["body"]
-        channel = "email" if name == "send_vendor_email" else ("sms" if name == "send_vendor_text" else "phone")
-        
-        candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == candidate_id).first()
-        if not candidate:
-            return {"error": f"Candidate {candidate_id} not found"}
-            
+        db.refresh(candidate)
+    else:
         candidate.status = "contacted"
         candidate.last_contacted_at = datetime.utcnow()
         candidate.next_action = "awaiting response"
         db.commit()
         
-        event = models.CommunicationEvent(
-            work_order_id=candidate.work_order_id,
-            work_order_candidate_id=candidate.id,
-            channel=channel,
-            direction="outbound",
-            actor_type="agent",
-            actor_name="Tavi Agent",
-            body=body,
-            created_at=datetime.utcnow()
-        )
-        db.add(event)
-        db.commit()
-        db.refresh(event)
-        return serialize_model(event)
+    event = models.CommunicationEvent(
+        work_order_id=work_order_id,
+        work_order_candidate_id=candidate.id,
+        channel=channel,
+        direction="outbound",
+        actor_type="agent",
+        actor_name="Tavi Agent",
+        body=body,
+        created_at=datetime.utcnow()
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return serialize_model(event)
+
+def _send_outbound_communication(db: Session, candidate_id: str, channel: str, body: str) -> Dict[str, Any]:
+    candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == candidate_id).first()
+    if not candidate:
+        return {"error": f"Candidate {candidate_id} not found"}
         
-    elif name == "create_bid":
-        wo_id = args["work_order_id"]
-        candidate_id = args["work_order_candidate_id"]
-        amount = args["amount_cents"]
-        start_at = args.get("arrival_window_start")
-        end_at = args.get("arrival_window_end")
-        scope = args.get("scope_notes")
-        status_val = args.get("status", "submitted")
+    candidate.status = "contacted"
+    candidate.last_contacted_at = datetime.utcnow()
+    candidate.next_action = "awaiting response"
+    db.commit()
+    
+    event = models.CommunicationEvent(
+        work_order_id=candidate.work_order_id,
+        work_order_candidate_id=candidate.id,
+        channel=channel,
+        direction="outbound",
+        actor_type="agent",
+        actor_name="Tavi Agent",
+        body=body,
+        created_at=datetime.utcnow()
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return serialize_model(event)
+
+def tool_send_vendor_email(db: Session, candidate_id: str, body: str, **kwargs) -> Dict[str, Any]:
+    return _send_outbound_communication(db, candidate_id, "email", body)
+
+def tool_send_vendor_text(db: Session, candidate_id: str, body: str, **kwargs) -> Dict[str, Any]:
+    return _send_outbound_communication(db, candidate_id, "sms", body)
+
+def tool_log_vendor_call(db: Session, candidate_id: str, body: str, **kwargs) -> Dict[str, Any]:
+    return _send_outbound_communication(db, candidate_id, "phone", body)
+
+def tool_create_bid(
+    db: Session,
+    work_order_id: str,
+    work_order_candidate_id: str,
+    amount_cents: int,
+    arrival_window_start: Optional[str] = None,
+    arrival_window_end: Optional[str] = None,
+    scope_notes: Optional[str] = None,
+    status: str = "submitted",
+    **kwargs
+) -> Dict[str, Any]:
+    from .main import update_bidding_mode_if_needed
+    candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == work_order_candidate_id).first()
+    if not candidate:
+        return {"error": f"Candidate {work_order_candidate_id} not found"}
+    if candidate.work_order_id != work_order_id:
+        return {"error": "Candidate does not belong to this work order"}
         
-        candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == candidate_id).first()
-        if not candidate:
-            return {"error": f"Candidate {candidate_id} not found"}
-        if candidate.work_order_id != wo_id:
-            return {"error": "Candidate does not belong to this work order"}
+    db_bid = models.Bid(
+        work_order_id=work_order_id,
+        work_order_candidate_id=work_order_candidate_id,
+        amount_cents=amount_cents,
+        arrival_window_start=datetime.fromisoformat(arrival_window_start.replace("Z", "")) if arrival_window_start else None,
+        arrival_window_end=datetime.fromisoformat(arrival_window_end.replace("Z", "")) if arrival_window_end else None,
+        scope_notes=scope_notes,
+        status=status,
+        submitted_at=datetime.utcnow(),
+        created_at=datetime.utcnow()
+    )
+    db.add(db_bid)
+    
+    candidate.status = "bid_submitted"
+    candidate.quoted_price_cents = amount_cents
+    if arrival_window_start:
+        candidate.available_start_at = datetime.fromisoformat(arrival_window_start.replace("Z", ""))
+    if arrival_window_end:
+        candidate.available_end_at = datetime.fromisoformat(arrival_window_end.replace("Z", ""))
+        
+    db.commit()
+    db.refresh(db_bid)
+    
+    update_bidding_mode_if_needed(db, candidate.work_order)
+    return serialize_model(db_bid)
+
+def tool_update_bid(
+    db: Session,
+    id: str,
+    amount_cents: Optional[int] = None,
+    arrival_window_start: Optional[str] = None,
+    arrival_window_end: Optional[str] = None,
+    scope_notes: Optional[str] = None,
+    status: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    from .main import create_wo_snapshot
+    db_bid = db.query(models.Bid).filter(models.Bid.id == id).first()
+    if not db_bid:
+        return {"error": f"Bid {id} not found"}
+        
+    updates = {}
+    for k, v in kwargs.items():
+        updates[k] = v
+    for k, v in [
+        ("amount_cents", amount_cents),
+        ("arrival_window_start", arrival_window_start),
+        ("arrival_window_end", arrival_window_end),
+        ("scope_notes", scope_notes),
+        ("status", status)
+    ]:
+        if v is not None:
+            updates[k] = v
             
-        db_bid = models.Bid(
-            work_order_id=wo_id,
-            work_order_candidate_id=candidate_id,
-            amount_cents=amount,
-            arrival_window_start=datetime.fromisoformat(start_at.replace("Z", "")) if start_at else None,
-            arrival_window_end=datetime.fromisoformat(end_at.replace("Z", "")) if end_at else None,
-            scope_notes=scope,
-            status=status_val,
-            submitted_at=datetime.utcnow(),
-            created_at=datetime.utcnow()
-        )
-        db.add(db_bid)
-        
-        candidate.status = "bid_submitted"
-        candidate.quoted_price_cents = amount
-        if start_at:
-            candidate.available_start_at = datetime.fromisoformat(start_at.replace("Z", ""))
-        if end_at:
-            candidate.available_end_at = datetime.fromisoformat(end_at.replace("Z", ""))
-            
-        db.commit()
-        db.refresh(db_bid)
-        
-        update_bidding_mode_if_needed(db, candidate.work_order)
-        return serialize_model(db_bid)
-        
-    elif name == "update_bid":
-        bid_id = args["id"]
-        db_bid = db.query(models.Bid).filter(models.Bid.id == bid_id).first()
-        if not db_bid:
-            return {"error": f"Bid {bid_id} not found"}
-            
-        for key, val in args.items():
-            if key == "id":
-                continue
-            if key in ("arrival_window_start", "arrival_window_end") and val:
+    for key, val in updates.items():
+        if key == "id":
+            continue
+        if key in ("arrival_window_start", "arrival_window_end") and val:
+            if isinstance(val, str):
                 val = datetime.fromisoformat(val.replace("Z", ""))
-            setattr(db_bid, key, val)
+        setattr(db_bid, key, val)
+            
+    db.commit()
+    db.refresh(db_bid)
+    
+    if updates.get("status") == "accepted":
+        wo = db_bid.work_order
+        wo.status = "awarded"
+        wo.accepted_bid_id = db_bid.id
+        wo.accepted_price_cents = db_bid.amount_cents
+        wo.selected_vendor_id = db_bid.candidate.vendor_id
+        
+        db_bid.candidate.status = "selected"
+        
+        other = db.query(models.WorkOrderCandidate).filter(
+            models.WorkOrderCandidate.work_order_id == wo.id,
+            models.WorkOrderCandidate.id != db_bid.work_order_candidate_id
+        ).all()
+        for oc in other:
+            oc.status = "not_selected"
             
         db.commit()
-        db.refresh(db_bid)
+        create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
         
-        if args.get("status") == "accepted":
-            wo = db_bid.work_order
-            wo.status = "awarded"
-            wo.accepted_bid_id = db_bid.id
-            wo.accepted_price_cents = db_bid.amount_cents
-            wo.selected_vendor_id = db_bid.candidate.vendor_id
-            
-            db_bid.candidate.status = "selected"
-            
-            other = db.query(models.WorkOrderCandidate).filter(
-                models.WorkOrderCandidate.work_order_id == wo.id,
-                models.WorkOrderCandidate.id != db_bid.work_order_candidate_id
-            ).all()
-            for oc in other:
-                oc.status = "not_selected"
-                
-            db.commit()
-            create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
-            
-        return serialize_model(db_bid)
-        
-    else:
+    return serialize_model(db_bid)
+
+# ----------------- Tool Dispatcher Implementation -----------------
+
+TOOL_FUNCTIONS = {
+    "create_work_order": tool_create_work_order,
+    "update_work_order": tool_update_work_order,
+    "get_work_order": tool_get_work_order,
+    "get_work_order_bids": tool_get_work_order_bids,
+    "get_work_order_candidates": tool_get_work_order_candidates,
+    "search_vendors": tool_search_vendors,
+    "create_work_order_candidate": tool_create_work_order_candidate,
+    "contact_vendor": tool_contact_vendor,
+    "send_vendor_email": tool_send_vendor_email,
+    "send_vendor_text": tool_send_vendor_text,
+    "log_vendor_call": tool_log_vendor_call,
+    "create_bid": tool_create_bid,
+    "update_bid": tool_update_bid,
+}
+
+def execute_tool(db: Session, name: str, args: Dict[str, Any]) -> Any:
+    logger.info(f"Executing tool {name} with args {args}")
+    func = TOOL_FUNCTIONS.get(name)
+    if not func:
         raise ValueError(f"Unknown tool function name: {name}")
+    return func(db, **args)
 
 # ----------------- OpenRouter Client & Execution Loop -----------------
 
