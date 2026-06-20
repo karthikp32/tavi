@@ -386,11 +386,11 @@ def tool_update_work_order(
         setattr(wo, key, val)
             
     wo.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(wo)
-    
     if changed:
         create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
+    else:
+        db.commit()
+    db.refresh(wo)
         
     return serialize_model(wo)
 
@@ -670,9 +670,6 @@ def tool_update_bid(
                 val = datetime.fromisoformat(val.replace("Z", ""))
         setattr(db_bid, key, val)
             
-    db.commit()
-    db.refresh(db_bid)
-    
     if updates.get("status") == "accepted":
         wo = db_bid.work_order
         wo.status = "awarded"
@@ -689,8 +686,11 @@ def tool_update_bid(
         for oc in other:
             oc.status = "not_selected"
             
-        db.commit()
         create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
+    else:
+        db.commit()
+        
+    db.refresh(db_bid)
         
     return serialize_model(db_bid)
 
