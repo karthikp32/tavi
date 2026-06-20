@@ -399,8 +399,19 @@ def tool_get_work_order(db: Session, id: str, **kwargs) -> Dict[str, Any]:
     if not wo:
         return {"error": f"Work order {id} not found"}
     res = serialize_model(wo)
+    
+    # Counts
     res["candidate_count"] = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.work_order_id == id).count()
     res["bid_count"] = db.query(models.Bid).filter(models.Bid.work_order_id == id).count()
+    res["communication_event_count"] = db.query(models.CommunicationEvent).filter(models.CommunicationEvent.work_order_id == id).count()
+    
+    # Related object metadata
+    res["facility_name"] = wo.facility.name if wo.facility else None
+    res["facility_address"] = wo.facility.address if wo.facility else None
+    res["facility_city"] = wo.facility.city if wo.facility else None
+    res["selected_vendor_name"] = wo.selected_vendor.name if wo.selected_vendor else None
+    res["user_name"] = wo.user.name if wo.user else None
+    
     return res
 
 def tool_get_work_order_bids(db: Session, work_order_id: str, **kwargs) -> List[Dict[str, Any]]:
