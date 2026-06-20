@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from . import models
 from .database import SessionLocal
+from .main import create_wo_snapshot, update_bidding_mode_if_needed
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +322,6 @@ def tool_create_work_order(
     target_budget_cents: Optional[int] = None,
     **kwargs
 ) -> Dict[str, Any]:
-    from .main import create_wo_snapshot
     db_wo = models.WorkOrder(
         user_id=user_id,
         facility_id=facility_id,
@@ -362,7 +362,6 @@ def tool_update_work_order(
     updates = {k: v for k, v in locals().items() if k not in ("db", "id", "kwargs") and v is not None}
     updates.update(kwargs)
 
-    from .main import create_wo_snapshot
     wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
     if not wo:
         return {"error": f"Work order {id} not found"}
@@ -616,7 +615,6 @@ def tool_create_bid(
     status: str = "submitted",
     **kwargs
 ) -> Dict[str, Any]:
-    from .main import update_bidding_mode_if_needed
     candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == work_order_candidate_id).first()
     if not candidate:
         return {"error": f"Candidate {work_order_candidate_id} not found"}
@@ -663,7 +661,6 @@ def tool_update_bid(
     updates = {k: v for k, v in locals().items() if k not in ("db", "id", "kwargs") and v is not None}
     updates.update(kwargs)
 
-    from .main import create_wo_snapshot
     db_bid = db.query(models.Bid).filter(models.Bid.id == id).first()
     if not db_bid:
         return {"error": f"Bid {id} not found"}
