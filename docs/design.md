@@ -11,6 +11,11 @@ The product should feel like a command center for trade work orders. Agents do t
 - The hackathon app should demonstrate the full workflow more than production-grade vendor sourcing.
 - Vendor discovery, vendor contact, and bid collection can be mocked or simulated where needed.
 - Mock vendor data should focus on NYC, LA, and Chicago for the project scope.
+- The MVP database should use SQLite.
+- The backend should use Python and FastAPI.
+- The frontend should use Next.js with React.
+- The LLM should use DeepSeek V4 Flash through OpenRouter.
+- The OpenRouter model id should be configurable, with `deepseek/deepseek-v4-flash` as the default.
 - Vendor quality, availability, and risk scores are current summary attributes, so they live on `vendors`.
 - Vendor price fit is derived from completed work orders and vendor task stats, not stored as a static vendor attribute.
 - A work order can involve many candidate vendors before one vendor is selected.
@@ -878,6 +883,7 @@ LLM tool functions should include:
 
 ```text
 Frontend
+  Next.js React app
   Landing page with chatbot input
   Work order dashboard
   Manual work order form
@@ -887,10 +893,12 @@ Frontend
   Bid detail screen
 
 Backend API
+  Python FastAPI app
   Owns chatbot, work order state
   Owns candidates, bids, communication events, and status events
 
 Agent workflow layer
+  Uses OpenRouter with DeepSeek V4 Flash
   Asks clarifying questions
   Parses intake
   Discovers vendors
@@ -903,6 +911,7 @@ Agent workflow layer
   Recommends a winner
 
 Database
+  SQLite
   Stores durable workflow state and audit history
 ```
 
