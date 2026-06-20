@@ -1,17 +1,31 @@
-# Tavi Backend
+# Tavi
 
-Tavi is an AI-native command center for facility managers to manage trade work orders, discover vendors, collect bids, and select winners. This repository contains the FastAPI backend and SQLite persistence layer.
+Tavi is an AI-native command center for facility managers to manage trade work orders, discover vendors, collect bids, and select winners. This repository contains the FastAPI backend, SQLite persistence layer, and the Next.js frontend.
 
 ---
 
-## Prerequisites
+## Frontend
+
+The frontend lives in `frontend/` (Next.js App Router).
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). See `frontend/README.md` for routes, tests, lint, and build commands.
+
+---
+
+## Backend
+
+### Prerequisites
 
 * **Python 3.12** (specifically python 3.12.x to avoid package compilation issues)
 * **SQLite** (built-in with Python)
 
----
-
-## Setup Instructions
+### Setup Instructions
 
 1. **Navigate to the backend directory**:
    ```bash
@@ -41,9 +55,7 @@ Tavi is an AI-native command center for facility managers to manage trade work o
    pip install -r requirements.txt
    ```
 
----
-
-## Seeding the Database
+### Seeding the Database
 
 To create the SQLite database schema and populate it with mock companies, facilities, vendors, task stats, and availability blocks for New York, Los Angeles, and Chicago, run:
 
@@ -53,9 +65,7 @@ python -m app.seed
 
 This will create a `tavi.db` file in the `backend/` directory.
 
----
-
-## Running the Backend
+### Running the Backend
 
 Start the Uvicorn development server:
 
@@ -65,9 +75,7 @@ uvicorn app.main:app --reload
 
 The API will be available locally at `http://127.0.0.1:8000`. You can explore the interactive API documentation (Swagger UI) at `http://127.0.0.1:8000/docs`.
 
----
-
-## Running Tests
+### Running Tests
 
 To run the complete test suite (incorporating database CRUD, candidacy lifecycle, bids, and the multi-turn LLM tools mock loop):
 
@@ -75,9 +83,7 @@ To run the complete test suite (incorporating database CRUD, candidacy lifecycle
 PYTHONPATH=. .venv/bin/pytest tests/
 ```
 
----
-
-## Directory Structure
+### Directory Structure
 
 ```text
 backend/
