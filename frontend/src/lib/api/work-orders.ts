@@ -1,0 +1,32 @@
+import { apiFetch } from "./client";
+import type { WorkOrder } from "../types";
+
+export type CreateWorkOrderPayload = Omit<
+  WorkOrder,
+  "id" | "created_at" | "updated_at" | "status"
+> &
+  Partial<Pick<WorkOrder, "status">>;
+
+export type UpdateWorkOrderPayload = Partial<Omit<WorkOrder, "id" | "created_at" | "updated_at">>;
+
+export function getWorkOrders(): Promise<WorkOrder[]> {
+  return apiFetch<WorkOrder[]>("/api/work-orders");
+}
+
+export function getWorkOrder(id: string): Promise<WorkOrder> {
+  return apiFetch<WorkOrder>(`/api/work-orders/${id}`);
+}
+
+export function createWorkOrder(payload: CreateWorkOrderPayload): Promise<WorkOrder> {
+  return apiFetch<WorkOrder>("/api/work-orders", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateWorkOrder(id: string, payload: UpdateWorkOrderPayload): Promise<WorkOrder> {
+  return apiFetch<WorkOrder>(`/api/work-orders/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
