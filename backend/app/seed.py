@@ -197,6 +197,12 @@ def seed_db(db: Session):
     db.commit()
     print("Database successfully seeded.")
 
+def ensure_seed_db(db: Session) -> bool:
+    if db.query(User).first() or db.query(Vendor).first():
+        return False
+    seed_db(db)
+    return True
+
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)
     db_session = SessionLocal()

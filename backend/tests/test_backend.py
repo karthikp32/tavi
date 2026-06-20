@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, get_db
 from app.main import app
-from app.seed import seed_db
+from app.seed import ensure_seed_db, seed_db
 from app import models
 
 # Use a separate SQLite file for tests
@@ -66,6 +66,70 @@ def test_schema_creation_and_seeding(client):
     assert response.status_code == 200
     vendors = response.json()
     assert len(vendors) > 0
+
+def test_ensure_seed_db_seeds_empty_sqlite_once(tmp_path):
+    db_path = tmp_path / "auto_seed.db"
+    auto_seed_engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    AutoSeedSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=auto_seed_engine)
+
+    Base.metadata.create_all(bind=auto_seed_engine)
+    db = AutoSeedSessionLocal()
+    try:
+        assert db.query(models.User).count() == 0
+        assert db.query(models.Vendor).count() == 0
+
+        assert ensure_seed_db(db) is True
+        user_count = db.query(models.User).count()
+        vendor_count = db.query(models.Vendor).count()
+        assert user_count > 0
+        assert vendor_count > 0
+
+        assert ensure_seed_db(db) is False
+        assert db.query(models.User).count() == user_count
+        assert db.query(models.Vendor).count() == vendor_count
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=auto_seed_engine)
+        auto_seed_engine.dispose()
+
+def test_startup_seed_preserves_existing_sqlite_data(tmp_path, monkeypatch):
+    db_path = tmp_path / "persistent_startup.db"
+    startup_engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    StartupSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=startup_engine)
+
+    monkeypatch.setattr("app.main.engine", startup_engine)
+    monkeypatch.setattr("app.main.SessionLocal", StartupSessionLocal)
+
+    with TestClient(app) as startup_client:
+        assert startup_client.get("/health").status_code == 200
+
+    db = StartupSessionLocal()
+    try:
+        vendor = db.query(models.Vendor).first()
+        assert vendor is not None
+        vendor.name = "Persisted Vendor Name"
+        db.commit()
+    finally:
+        db.close()
+
+    with TestClient(app) as startup_client:
+        assert startup_client.get("/health").status_code == 200
+
+    db = StartupSessionLocal()
+    try:
+        assert db.query(models.Vendor).filter(
+            models.Vendor.name == "Persisted Vendor Name"
+        ).count() == 1
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=startup_engine)
+        startup_engine.dispose()
 
 def test_work_order_lifecycle_and_snapshots(client, db_session):
     # 1. Create a work order

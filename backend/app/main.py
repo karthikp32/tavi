@@ -4,15 +4,23 @@ from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from decimal import Decimal
+from contextlib import asynccontextmanager
 
-from .database import engine, Base, get_db
+from .database import engine, Base, get_db, SessionLocal
 from . import models, schemas
-from .seed import seed_db
+from .seed import ensure_seed_db, seed_db
 
-app = FastAPI(title="Tavi Hackathon Backend", version="1.0.0")
+def initialize_database():
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as startup_db:
+        ensure_seed_db(startup_db)
 
-# Ensure tables are created at startup
-Base.metadata.create_all(bind=engine)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    initialize_database()
+    yield
+
+app = FastAPI(title="Tavi Hackathon Backend", version="1.0.0", lifespan=lifespan)
 
 @app.get("/health")
 @app.get("/")
