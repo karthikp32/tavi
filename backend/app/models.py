@@ -263,6 +263,8 @@ class CommunicationEvent(Base):
     direction = Column(String, nullable=False)  # inbound, outbound, internal
     actor_type = Column(String, nullable=False)  # system, agent, human, vendor, facility_manager
     actor_name = Column(String, nullable=True)
+    sender_id = Column(String, nullable=True)
+    sender_type = Column(String, nullable=True)
 
     body = Column(String, nullable=False)
     event_metadata = Column("metadata", JSON, nullable=True)

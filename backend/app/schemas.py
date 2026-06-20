@@ -477,6 +477,8 @@ class CommunicationEventBase(AppBaseModel):
     direction: str
     actor_type: str
     actor_name: Optional[str] = None
+    sender_id: Optional[str] = None
+    sender_type: Optional[str] = None
     body: str
     metadata: Optional[Dict[str, Any]] = None
 
@@ -516,6 +518,13 @@ class CommunicationEventCreate(CommunicationEventBase):
     def validate_actor_type(cls, v: str) -> str:
         if v not in ACTOR_TYPES:
             raise ValueError(f"Invalid actor_type. Must be one of {ACTOR_TYPES}")
+        return v
+
+    @field_validator("sender_type")
+    @classmethod
+    def validate_sender_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ACTOR_TYPES:
+            raise ValueError(f"Invalid sender_type. Must be one of {ACTOR_TYPES}")
         return v
 
 class CommunicationEventOut(CommunicationEventBase):
