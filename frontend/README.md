@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tavi Frontend
 
-## Getting Started
+Next.js (App Router) frontend for the Tavi command center, scaffolded per `docs/frontend_foundation_plan.md`.
 
-First, run the development server:
+## Requirements
+
+- Node.js 20+
+- npm
+
+## Install
+
+```bash
+npm install
+```
+
+## Run the dev server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Routes available in this slice:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `/` — landing page with chatbot input
+- `/work-orders` — work order dashboard
+- `/work-orders/new` — manual work order creation form
+- `/work-orders/[id]` — work order review page
+- `/work-orders/[id]/bids/[bidId]` — bid detail page
+- `/vendors` — vendor search
+- `/vendors/[id]` — vendor profile
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The app calls a backend API at `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`). No backend exists yet in this slice, so API calls will fail until that's built — the UI shells still render.
 
-## Learn More
+## Run tests
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm test
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Lint
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run lint
+```
 
-## Deploy on Vercel
+## Build for production
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run build
+npm start
+```
