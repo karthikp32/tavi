@@ -101,3 +101,29 @@ backend/
 │   └── test_llm.py      # Unit tests for chat, message persistence, and tool logic
 └── requirements.txt  # Project requirements
 ```
+
+---
+
+## Design Decisions
+
+### Dynamic Vendor Price Fit Calculation
+
+When searching for vendors in the marketplace via the `search_vendors` tool, the system calculates a dynamic `price_fit` score (ranging from `0.0` to `1.0`) to indicate how well a vendor's pricing matches the user's budget expectations.
+
+#### 1. With a User-Specified Budget (`target_budget` is provided)
+If the facility manager has set an explicit target budget, the price fit is calculated as:
+* **Perfect Match (`1.0`)**: If the vendor's historical median price is less than or equal to the target budget:
+  $$\text{price\_fit} = 1.0 \quad \text{when} \quad \text{median\_price} \le \text{target\_budget}$$
+* **Gradual Decay**: If the vendor's median price exceeds the target budget, the score decays linearly towards `0.0` based on the percentage deviation:
+  $$\text{price\_fit} = \max\left(0.0, 1.0 - \frac{\text{median\_price} - \text{target\_budget}}{\text{target\_budget}}\right)$$
+
+#### 2. Without a User-Specified Budget (`target_budget` is omitted)
+When the target budget is unknown, the system must define a comparative baseline to score the vendors. We use the **local market average median price** ($\text{avg\_median}$) of all vendors matching the trade and city as this baseline:
+$$\text{avg\_median} = \frac{1}{N} \sum_{i=1}^{N} \text{median\_price}_i$$
+
+The price fit is then calculated using the market average:
+* **Competitive Fit (`1.0`)**: If the vendor's price is equal to or below the local market average, they are considered a perfect competitive fit:
+  $$\text{price\_fit} = 1.0 \quad \text{when} \quad \text{median\_price} \le \text{avg\_median}$$
+* **Above-Average Penalty**: If the vendor's price is higher than the local market average, the fit score decays relative to the average:
+  $$\text{price\_fit} = \max\left(0.0, 1.0 - \frac{\text{median\_price} - \text{avg\_median}}{\text{avg\_median}}\right)$$
+
