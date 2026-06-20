@@ -358,6 +358,10 @@ def tool_update_work_order(
     confirmation_status: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
+    # Extract passed non-None parameters from local scope and merge with kwargs
+    updates = {k: v for k, v in locals().items() if k not in ("db", "id", "kwargs") and v is not None}
+    updates.update(kwargs)
+
     from .main import create_wo_snapshot
     wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
     if not wo:
@@ -370,24 +374,8 @@ def tool_update_work_order(
         "completed_vendor_quality_score"
     }
     
-    updates = {}
-    for k, v in kwargs.items():
-        updates[k] = v
-    for k, v in [
-        ("title", title), ("description", description), ("trade", trade),
-        ("task_type", task_type), ("status", status), ("target_budget_cents", target_budget_cents),
-        ("max_price_cents", max_price_cents), ("urgency", urgency),
-        ("selected_vendor_id", selected_vendor_id), ("accepted_bid_id", accepted_bid_id),
-        ("accepted_price_cents", accepted_price_cents), ("scheduled_start_at", scheduled_start_at),
-        ("confirmation_status", confirmation_status)
-    ]:
-        if v is not None:
-            updates[k] = v
-            
     changed = False
     for key, val in updates.items():
-        if key == "id":
-            continue
         if key == "scheduled_start_at" and val:
             if isinstance(val, str):
                 val = datetime.fromisoformat(val.replace("Z", ""))
@@ -656,27 +644,16 @@ def tool_update_bid(
     status: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
+    # Extract passed non-None parameters from local scope and merge with kwargs
+    updates = {k: v for k, v in locals().items() if k not in ("db", "id", "kwargs") and v is not None}
+    updates.update(kwargs)
+
     from .main import create_wo_snapshot
     db_bid = db.query(models.Bid).filter(models.Bid.id == id).first()
     if not db_bid:
         return {"error": f"Bid {id} not found"}
         
-    updates = {}
-    for k, v in kwargs.items():
-        updates[k] = v
-    for k, v in [
-        ("amount_cents", amount_cents),
-        ("arrival_window_start", arrival_window_start),
-        ("arrival_window_end", arrival_window_end),
-        ("scope_notes", scope_notes),
-        ("status", status)
-    ]:
-        if v is not None:
-            updates[k] = v
-            
     for key, val in updates.items():
-        if key == "id":
-            continue
         if key in ("arrival_window_start", "arrival_window_end") and val:
             if isinstance(val, str):
                 val = datetime.fromisoformat(val.replace("Z", ""))
