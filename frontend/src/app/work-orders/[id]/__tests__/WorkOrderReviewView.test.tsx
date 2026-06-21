@@ -127,4 +127,32 @@ describe("WorkOrderReviewView", () => {
     expect(screen.getByText(/recommended winner is/i)).toBeInTheDocument();
     expect(screen.getAllByText("Acme Plumbing").length).toBeGreaterThan(0);
   });
+
+  it("renders the facility name when the work order has a facility", async () => {
+    vi.mocked(getWorkOrder).mockResolvedValue({
+      ...workOrder,
+      facility_id: "facility_1",
+      facility: {
+        id: "facility_1",
+        user_id: "user_1",
+        name: "Brooklyn Annex",
+        address: "1 Pierrepont St",
+        city: "New York",
+        state: "NY",
+        postal_code: "11201",
+        latitude: null,
+        longitude: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    });
+    vi.mocked(getWorkOrderCandidates).mockResolvedValue([]);
+    vi.mocked(getWorkOrderBids).mockResolvedValue([]);
+    vi.mocked(getWorkOrderTimeline).mockResolvedValue([]);
+
+    render(<WorkOrderReviewView workOrderId="wo_123" />);
+
+    expect(await screen.findByRole("heading", { name: "Fix leaking sink" })).toBeInTheDocument();
+    expect(screen.getByText("Brooklyn Annex")).toBeInTheDocument();
+  });
 });

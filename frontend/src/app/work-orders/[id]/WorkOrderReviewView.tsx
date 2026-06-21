@@ -193,6 +193,10 @@ export function WorkOrderReviewView({ workOrderId }: WorkOrderReviewViewProps) {
                   <span className="font-medium">Trade:</span> {workOrder.trade}
                 </p>
                 <p>
+                  <span className="font-medium">Facility:</span>{" "}
+                  {workOrder.facility?.name ?? "—"}
+                </p>
+                <p>
                   <span className="font-medium">Description:</span> {workOrder.description}
                 </p>
                 <p>
