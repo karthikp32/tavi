@@ -10,6 +10,7 @@ import { clearSession, getSession, homePathForSession, type Session } from "@/li
 const navLinksByType: Record<Session["type"], { href: string; label: string }[]> = {
   facility_manager: [
     { href: "/work-orders", label: "Work Orders" },
+    { href: "/facilities", label: "Facilities" },
     { href: "/vendors", label: "Vendors" },
   ],
   vendor: [{ href: "/vendor/marketplace", label: "Marketplace" }],
