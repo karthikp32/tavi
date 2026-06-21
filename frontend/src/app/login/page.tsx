@@ -27,6 +27,7 @@ export default function LoginPage() {
         name: identity.name,
         trade: identity.trade,
         company_id: identity.company_id,
+        login_token: token.trim(),
       };
       setSession(session);
       router.push(homePathForSession(session));

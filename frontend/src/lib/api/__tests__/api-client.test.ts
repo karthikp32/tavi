@@ -19,10 +19,12 @@ function mockFetchOnce(body: unknown, ok = true) {
 describe("api client request building", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+    document.cookie = "tavi_session=; path=/; max-age=0";
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    document.cookie = "tavi_session=; path=/; max-age=0";
   });
 
   it("posts to /api/work-orders when creating a work order", async () => {
@@ -55,6 +57,31 @@ describe("api client request building", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/work-orders",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("sends the login token from the browser session", async () => {
+    const fetchMock = mockFetchOnce([]);
+    document.cookie = `tavi_session=${encodeURIComponent(
+      JSON.stringify({
+        id: "user_1",
+        type: "facility_manager",
+        name: "Apex Manager",
+        trade: null,
+        company_id: "company_1",
+        login_token: "facility-manager-1",
+      }),
+    )}; path=/`;
+
+    await getWorkOrderTimeline("wo_1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/work-orders/wo_1/timeline",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-Tavi-Login-Token": "facility-manager-1",
+        }),
+      }),
     );
   });
 

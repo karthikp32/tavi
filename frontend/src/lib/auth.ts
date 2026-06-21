@@ -6,6 +6,7 @@ export interface Session {
   name: string;
   trade: string | null;
   company_id: string | null;
+  login_token?: string;
 }
 
 const COOKIE_NAME = "tavi_session";

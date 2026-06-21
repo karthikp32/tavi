@@ -1,5 +1,5 @@
 import anyio
-from fastapi import FastAPI, Depends, HTTPException, Query, status, Request
+from fastapi import FastAPI, Depends, Header, HTTPException, Query, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, inspect, text
@@ -87,6 +87,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def get_current_user(
+    x_tavi_login_token: str = Header(...),
+    db: Session = Depends(get_db),
+) -> models.User:
+    user = db.query(models.User).filter(models.User.login_token == x_tavi_login_token).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid login token")
+    return user
+
+
+def get_optional_current_user(
+    x_tavi_login_token: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+) -> Optional[models.User]:
+    if not x_tavi_login_token:
+        return None
+    return db.query(models.User).filter(models.User.login_token == x_tavi_login_token).first()
 
 @app.get("/health")
 @app.get("/")
@@ -201,16 +220,21 @@ def update_bidding_mode_if_needed(db: Session, work_order: models.WorkOrder):
 # ----------------- Facilities Endpoints -----------------
 
 @app.get("/api/facilities", response_model=List[schemas.FacilityOut])
-def list_facilities(db: Session = Depends(get_db)):
-    return db.query(models.Facility).all()
+def list_facilities(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return db.query(models.Facility).filter(models.Facility.user_id == current_user.id).all()
 
 @app.post("/api/facilities", response_model=schemas.FacilityOut, status_code=status.HTTP_201_CREATED)
-def create_facility(facility_in: schemas.FacilityCreate, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.id == facility_in.user_id).first()
-    if not user:
-        raise HTTPException(status_code=400, detail="User not found")
-
-    db_facility = models.Facility(**facility_in.model_dump())
+def create_facility(
+    facility_in: schemas.FacilityCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    facility_data = facility_in.model_dump()
+    facility_data["user_id"] = current_user.id
+    db_facility = models.Facility(**facility_data)
     db.add(db_facility)
     db.commit()
     db.refresh(db_facility)
@@ -219,15 +243,14 @@ def create_facility(facility_in: schemas.FacilityCreate, db: Session = Depends(g
 # ----------------- Work Orders Endpoints -----------------
 
 @app.post("/api/work-orders", response_model=schemas.WorkOrderOut, status_code=status.HTTP_201_CREATED)
-def create_work_order(wo_in: schemas.WorkOrderCreate, db: Session = Depends(get_db)):
-    # Verify user exists
-    user = db.query(models.User).filter(models.User.id == wo_in.user_id).first()
-    if not user:
-        raise HTTPException(status_code=400, detail="User not found")
-        
+def create_work_order(
+    wo_in: schemas.WorkOrderCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     db_wo = models.WorkOrder(
-        user_id=wo_in.user_id,
-        company_id=wo_in.company_id,
+        user_id=current_user.id,
+        company_id=wo_in.company_id or current_user.company_id,
         facility_id=wo_in.facility_id,
         title=wo_in.title,
         description=wo_in.description,
@@ -259,8 +282,14 @@ def create_work_order(wo_in: schemas.WorkOrderCreate, db: Session = Depends(get_
     return db_wo
 
 @app.get("/api/work-orders", response_model=List[schemas.WorkOrderOut])
-def list_work_orders(vendor_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
+def list_work_orders(
+    vendor_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
+):
     query = db.query(models.WorkOrder)
+    if current_user:
+        query = query.filter(models.WorkOrder.user_id == current_user.id)
     if vendor_id:
         query = query.join(
             models.WorkOrderCandidate,
@@ -269,15 +298,30 @@ def list_work_orders(vendor_id: Optional[str] = Query(None), db: Session = Depen
     return query.all()
 
 @app.get("/api/work-orders/{id}", response_model=schemas.WorkOrderOut)
-def get_work_order(id: str, db: Session = Depends(get_db)):
-    wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
+def get_work_order(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    wo = db.query(models.WorkOrder).filter(
+        models.WorkOrder.id == id,
+        models.WorkOrder.user_id == current_user.id,
+    ).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
     return wo
 
 @app.patch("/api/work-orders/{id}", response_model=schemas.WorkOrderOut)
-def patch_work_order(id: str, wo_update: schemas.WorkOrderUpdate, db: Session = Depends(get_db)):
-    wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
+def patch_work_order(
+    id: str,
+    wo_update: schemas.WorkOrderUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    wo = db.query(models.WorkOrder).filter(
+        models.WorkOrder.id == id,
+        models.WorkOrder.user_id == current_user.id,
+    ).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
         
@@ -797,14 +841,13 @@ def get_work_order_timeline(id: str, db: Session = Depends(get_db)):
 # ----------------- Chat Endpoints -----------------
 
 @app.post("/api/chat-sessions", response_model=schemas.ChatSessionOut, status_code=status.HTTP_201_CREATED)
-def create_chat_session(session: schemas.ChatSessionCreate, db: Session = Depends(get_db)):
-    # Verify user
-    user = db.query(models.User).filter(models.User.id == session.user_id).first()
-    if not user:
-        raise HTTPException(status_code=400, detail="User not found")
-        
+def create_chat_session(
+    session: schemas.ChatSessionCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     db_session = models.ChatSession(
-        user_id=session.user_id,
+        user_id=current_user.id,
         work_order_id=session.work_order_id,
         status=session.status,
         summary=session.summary,
@@ -817,24 +860,43 @@ def create_chat_session(session: schemas.ChatSessionCreate, db: Session = Depend
     return db_session
 
 @app.get("/api/chat-sessions", response_model=List[schemas.ChatSessionOut])
-def list_chat_sessions(db: Session = Depends(get_db)):
+def list_chat_sessions(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     return (
         db.query(models.ChatSession)
         .options(selectinload(models.ChatSession.messages))
+        .filter(models.ChatSession.user_id == current_user.id)
         .order_by(models.ChatSession.updated_at.desc())
         .all()
     )
 
 @app.get("/api/chat-sessions/{id}", response_model=schemas.ChatSessionOut)
-def get_chat_session(id: str, db: Session = Depends(get_db)):
-    s = db.query(models.ChatSession).filter(models.ChatSession.id == id).first()
+def get_chat_session(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    s = db.query(models.ChatSession).filter(
+        models.ChatSession.id == id,
+        models.ChatSession.user_id == current_user.id,
+    ).first()
     if not s:
         raise HTTPException(status_code=404, detail="Chat session not found")
     return s
 
 @app.patch("/api/chat-sessions/{id}", response_model=schemas.ChatSessionOut)
-def patch_chat_session(id: str, update: schemas.ChatSessionUpdate, db: Session = Depends(get_db)):
-    s = db.query(models.ChatSession).filter(models.ChatSession.id == id).first()
+def patch_chat_session(
+    id: str,
+    update: schemas.ChatSessionUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    s = db.query(models.ChatSession).filter(
+        models.ChatSession.id == id,
+        models.ChatSession.user_id == current_user.id,
+    ).first()
     if not s:
         raise HTTPException(status_code=404, detail="Chat session not found")
     if update.summary is not None:
@@ -845,8 +907,15 @@ def patch_chat_session(id: str, update: schemas.ChatSessionUpdate, db: Session =
     return s
 
 @app.delete("/api/chat-sessions/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_chat_session(id: str, db: Session = Depends(get_db)):
-    s = db.query(models.ChatSession).filter(models.ChatSession.id == id).first()
+def delete_chat_session(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    s = db.query(models.ChatSession).filter(
+        models.ChatSession.id == id,
+        models.ChatSession.user_id == current_user.id,
+    ).first()
     if not s:
         raise HTTPException(status_code=404, detail="Chat session not found")
     db.delete(s)
@@ -854,8 +923,16 @@ def delete_chat_session(id: str, db: Session = Depends(get_db)):
     return None
 
 @app.post("/api/chat-sessions/{id}/messages", response_model=schemas.ChatMessageOut, status_code=status.HTTP_201_CREATED)
-def create_chat_message(id: str, msg: schemas.ChatMessageCreate, db: Session = Depends(get_db)):
-    s = db.query(models.ChatSession).filter(models.ChatSession.id == id).first()
+def create_chat_message(
+    id: str,
+    msg: schemas.ChatMessageCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    s = db.query(models.ChatSession).filter(
+        models.ChatSession.id == id,
+        models.ChatSession.user_id == current_user.id,
+    ).first()
     if not s:
         raise HTTPException(status_code=404, detail="Chat session not found")
         
@@ -880,6 +957,7 @@ def post_llm_message(
     req: schemas.LlmMessageRequest,
     request: Request,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     from . import llm
 
@@ -889,27 +967,18 @@ def post_llm_message(
     
     # 1. Fetch or create chat session
     if req.chat_session_id:
-        chat_session = db.query(models.ChatSession).filter(models.ChatSession.id == req.chat_session_id).first()
+        chat_session = db.query(models.ChatSession).filter(
+            models.ChatSession.id == req.chat_session_id,
+            models.ChatSession.user_id == current_user.id,
+        ).first()
         if not chat_session:
             raise HTTPException(status_code=404, detail="Chat session not found")
         if req.work_order_id and not chat_session.work_order_id:
             chat_session.work_order_id = req.work_order_id
             db.commit()
     else:
-        # Get default seeded facility manager
-        user = db.query(models.User).filter(models.User.user_type == "facility_manager").first()
-        if not user:
-            user = models.User(
-                name="Apex Seeded Manager",
-                email="karthik@tavi.com",
-                user_type="facility_manager"
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-            
         chat_session = models.ChatSession(
-            user_id=user.id,
+            user_id=current_user.id,
             work_order_id=req.work_order_id,
             status="active",
             created_at=datetime.utcnow(),

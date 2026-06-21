@@ -46,7 +46,7 @@ def setup_test_db():
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, headers=auth_headers())
 
 @pytest.fixture
 def db_session():
@@ -55,6 +55,10 @@ def db_session():
         yield db
     finally:
         db.close()
+
+
+def auth_headers(token: str = "facility-manager-1") -> dict[str, str]:
+    return {"X-Tavi-Login-Token": token}
 
 def test_schema_creation_and_seeding(client):
     # Verify we have seeded users and companies
@@ -93,6 +97,71 @@ def test_schema_creation_and_seeding(client):
     assert green_tech["phone"] == "847-518-5338"
     assert green_tech["email"] == "info@greentechplumbing.com"
     assert green_tech["address"] == "1017 S. Graceland Ave"
+
+
+def test_facility_manager_queries_are_scoped_to_current_user(client, db_session):
+    current_user = db_session.query(models.User).filter(
+        models.User.login_token == "facility-manager-1"
+    ).one()
+    other_company = models.Company(
+        id="other-fm-company",
+        name="Other Facility Company",
+        company_type="facility_manager",
+    )
+    other_user = models.User(
+        id="other-fm-user",
+        company_id=other_company.id,
+        name="Other Manager",
+        email="other-manager@example.com",
+        user_type="facility_manager",
+        login_token="facility-manager-2",
+    )
+    other_facility = models.Facility(
+        id="other-facility",
+        user_id=other_user.id,
+        name="Other Facility",
+        address="200 Other St",
+        city="Chicago",
+        state="IL",
+    )
+    other_work_order = models.WorkOrder(
+        id="other-work-order",
+        user_id=other_user.id,
+        company_id=other_company.id,
+        facility_id=other_facility.id,
+        title="Other manager work order",
+        description="Should not be visible",
+        trade="Plumbing",
+        status="draft",
+    )
+    current_chat = models.ChatSession(
+        id="current-user-chat",
+        user_id=current_user.id,
+        status="active",
+        summary="Current user chat",
+    )
+    other_chat = models.ChatSession(
+        id="other-user-chat",
+        user_id=other_user.id,
+        status="active",
+        summary="Other user chat",
+    )
+    db_session.add_all(
+        [other_company, other_user, other_facility, other_work_order, current_chat, other_chat]
+    )
+    db_session.commit()
+
+    work_orders = client.get("/api/work-orders", headers=auth_headers()).json()
+    assert "other-work-order" not in {work_order["id"] for work_order in work_orders}
+    assert {work_order["user_id"] for work_order in work_orders} == {current_user.id}
+
+    facilities = client.get("/api/facilities", headers=auth_headers()).json()
+    assert "other-facility" not in {facility["id"] for facility in facilities}
+    assert {facility["user_id"] for facility in facilities} == {current_user.id}
+
+    chat_sessions = client.get("/api/chat-sessions", headers=auth_headers()).json()
+    assert "current-user-chat" in {session["id"] for session in chat_sessions}
+    assert "other-user-chat" not in {session["id"] for session in chat_sessions}
 
 def test_ensure_seed_db_seeds_empty_sqlite_once(tmp_path):
     db_path = tmp_path / "auto_seed.db"
@@ -664,14 +733,18 @@ def test_facilities_list_and_create(client, db_session):
     assert list_response.status_code == 200
     assert any(f["id"] == created["id"] for f in list_response.json())
 
-def test_facility_create_with_unknown_user_returns_400(client):
+def test_facility_create_uses_login_token_user_id(client, db_session):
+    current_user = db_session.query(models.User).filter(
+        models.User.login_token == "facility-manager-1"
+    ).one()
     payload = {
         "user_id": "not-a-real-user",
-        "name": "Ghost Facility",
+        "name": "Token Owned Facility",
         "address": "404 Nowhere Ave",
     }
     response = client.post("/api/facilities", json=payload)
-    assert response.status_code == 400
+    assert response.status_code == 201
+    assert response.json()["user_id"] == current_user.id
 
 def test_work_order_required_arrival_window_round_trip(client, db_session):
     user = db_session.query(models.User).first()
