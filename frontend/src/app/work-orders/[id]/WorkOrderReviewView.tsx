@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { CommandCenterLayout } from "@/components/layout/CommandCenterLayout";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -11,11 +12,11 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Table, type TableColumn } from "@/components/ui/Table";
 import { getWorkOrder } from "@/lib/api/work-orders";
-import { getWorkOrderCandidates } from "@/lib/api/candidates";
+import { getWorkOrderCandidates, contactWorkOrderCandidate } from "@/lib/api/candidates";
 import { getWorkOrderBids } from "@/lib/api/bids";
 import { getWorkOrderTimeline, type TimelineEntry } from "@/lib/api/timeline";
 import { getVendor } from "@/lib/api/vendors";
-import type { Bid, Vendor, WorkOrder, WorkOrderCandidate } from "@/lib/types";
+import type { Bid, CommunicationEvent, Vendor, WorkOrder, WorkOrderCandidate } from "@/lib/types";
 
 interface WorkOrderReviewViewProps {
   workOrderId: string;
@@ -45,6 +46,14 @@ export function WorkOrderReviewView({ workOrderId }: WorkOrderReviewViewProps) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [contactingCandidateId, setContactingCandidateId] = useState<string | null>(null);
+  const [contactErrorByCandidateId, setContactErrorByCandidateId] = useState<
+    Record<string, string>
+  >({});
+  const [lastEventByCandidateId, setLastEventByCandidateId] = useState<
+    Record<string, CommunicationEvent>
+  >({});
 
   useEffect(() => {
     let isCancelled = false;
@@ -86,6 +95,25 @@ export function WorkOrderReviewView({ workOrderId }: WorkOrderReviewViewProps) {
       isCancelled = true;
     };
   }, [workOrderId]);
+
+  async function handleContact(candidateId: string, channel: "email" | "sms" | "phone") {
+    setContactingCandidateId(candidateId);
+    setContactErrorByCandidateId((prev) => ({ ...prev, [candidateId]: "" }));
+    try {
+      const event = await contactWorkOrderCandidate(candidateId, {
+        channel,
+        body: `Outreach via ${channel} regarding work order.`,
+      });
+      setLastEventByCandidateId((prev) => ({ ...prev, [candidateId]: event }));
+    } catch {
+      setContactErrorByCandidateId((prev) => ({
+        ...prev,
+        [candidateId]: "Could not send that message. Please try again.",
+      }));
+    } finally {
+      setContactingCandidateId(null);
+    }
+  }
 
   const candidatesByVendorId = useMemo(
     () => Object.fromEntries(candidates.map((candidate) => [candidate.id, candidate])),
@@ -240,18 +268,55 @@ export function WorkOrderReviewView({ workOrderId }: WorkOrderReviewViewProps) {
                 {candidates.length === 0 ? (
                   <p className="text-sm text-tavi-navy/50">No candidates yet.</p>
                 ) : (
-                  <ul className="flex flex-col gap-1 text-sm text-tavi-navy">
+                  <ul className="flex flex-col gap-3 text-sm text-tavi-navy">
                     {candidates.map((candidate) => {
                       const vendor = vendorsById[candidate.vendor_id];
+                      const isContacting = contactingCandidateId === candidate.id;
+                      const contactError = contactErrorByCandidateId[candidate.id];
+                      const lastEvent = lastEventByCandidateId[candidate.id];
                       return (
-                        <li key={candidate.id}>
-                          <Link
-                            href={`/vendors/${candidate.vendor_id}`}
-                            className="text-tavi-indigo underline"
-                          >
-                            {vendor?.name ?? candidate.vendor_id}
-                          </Link>{" "}
-                          — {candidate.status}
+                        <li key={candidate.id} className="flex flex-col gap-2">
+                          <p>
+                            <Link
+                              href={`/vendors/${candidate.vendor_id}`}
+                              className="text-tavi-indigo underline"
+                            >
+                              {vendor?.name ?? candidate.vendor_id}
+                            </Link>{" "}
+                            — {candidate.status}
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={isContacting}
+                              onClick={() => handleContact(candidate.id, "email")}
+                            >
+                              Send email
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={isContacting}
+                              onClick={() => handleContact(candidate.id, "sms")}
+                            >
+                              Send text
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={isContacting}
+                              onClick={() => handleContact(candidate.id, "phone")}
+                            >
+                              Call
+                            </Button>
+                          </div>
+                          {contactError ? <ErrorState message={contactError} /> : null}
+                          {lastEvent ? (
+                            <p className="text-sm text-tavi-navy/70">
+                              Logged {lastEvent.channel} ({lastEvent.direction}): {lastEvent.body}
+                            </p>
+                          ) : null}
                         </li>
                       );
                     })}

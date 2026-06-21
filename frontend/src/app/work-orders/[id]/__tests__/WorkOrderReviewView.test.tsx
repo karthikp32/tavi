@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WorkOrderReviewView } from "../WorkOrderReviewView";
 import { getWorkOrder } from "@/lib/api/work-orders";
-import { getWorkOrderCandidates } from "@/lib/api/candidates";
+import { getWorkOrderCandidates, contactWorkOrderCandidate } from "@/lib/api/candidates";
 import { getWorkOrderBids } from "@/lib/api/bids";
 import { getWorkOrderTimeline } from "@/lib/api/timeline";
 import { getVendor } from "@/lib/api/vendors";
@@ -13,6 +13,7 @@ vi.mock("@/lib/api/work-orders", () => ({
 
 vi.mock("@/lib/api/candidates", () => ({
   getWorkOrderCandidates: vi.fn(),
+  contactWorkOrderCandidate: vi.fn(),
 }));
 
 vi.mock("@/lib/api/bids", () => ({
@@ -154,5 +155,40 @@ describe("WorkOrderReviewView", () => {
 
     expect(await screen.findByRole("heading", { name: "Fix leaking sink" })).toBeInTheDocument();
     expect(screen.getByText("Brooklyn Annex")).toBeInTheDocument();
+  });
+
+  it("sends a text message to a candidate and renders the resulting communication event", async () => {
+    vi.mocked(getWorkOrder).mockResolvedValue(workOrder);
+    vi.mocked(getWorkOrderCandidates).mockResolvedValue([candidate]);
+    vi.mocked(getWorkOrderBids).mockResolvedValue([]);
+    vi.mocked(getWorkOrderTimeline).mockResolvedValue([]);
+    vi.mocked(getVendor).mockResolvedValue(vendor);
+    vi.mocked(contactWorkOrderCandidate).mockResolvedValue({
+      id: "event_1",
+      work_order_id: "wo_123",
+      work_order_candidate_id: "cand_1",
+      channel: "sms",
+      direction: "outbound",
+      actor_type: "human",
+      actor_name: null,
+      body: "Outreach via sms regarding work order.",
+      metadata: null,
+      created_at: "2026-01-01T00:00:00Z",
+    });
+
+    render(<WorkOrderReviewView workOrderId="wo_123" />);
+
+    await screen.findByRole("heading", { name: "Fix leaking sink" });
+
+    fireEvent.click(screen.getByRole("button", { name: /send text/i }));
+
+    await waitFor(() => {
+      expect(contactWorkOrderCandidate).toHaveBeenCalledWith("cand_1", {
+        channel: "sms",
+        body: "Outreach via sms regarding work order.",
+      });
+    });
+
+    expect(await screen.findByText(/Logged sms \(outbound\)/)).toBeInTheDocument();
   });
 });
