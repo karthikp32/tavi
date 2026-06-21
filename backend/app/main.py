@@ -1,7 +1,7 @@
 import anyio
 from fastapi import FastAPI, Depends, HTTPException, Query, status, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from typing import List, Optional, Dict, Any
@@ -764,12 +764,42 @@ def create_chat_session(session: schemas.ChatSessionCreate, db: Session = Depend
     db.refresh(db_session)
     return db_session
 
+@app.get("/api/chat-sessions", response_model=List[schemas.ChatSessionOut])
+def list_chat_sessions(db: Session = Depends(get_db)):
+    return (
+        db.query(models.ChatSession)
+        .options(selectinload(models.ChatSession.messages))
+        .order_by(models.ChatSession.updated_at.desc())
+        .all()
+    )
+
 @app.get("/api/chat-sessions/{id}", response_model=schemas.ChatSessionOut)
 def get_chat_session(id: str, db: Session = Depends(get_db)):
     s = db.query(models.ChatSession).filter(models.ChatSession.id == id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Chat session not found")
     return s
+
+@app.patch("/api/chat-sessions/{id}", response_model=schemas.ChatSessionOut)
+def patch_chat_session(id: str, update: schemas.ChatSessionUpdate, db: Session = Depends(get_db)):
+    s = db.query(models.ChatSession).filter(models.ChatSession.id == id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    if update.summary is not None:
+        s.summary = update.summary
+        s.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(s)
+    return s
+
+@app.delete("/api/chat-sessions/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_chat_session(id: str, db: Session = Depends(get_db)):
+    s = db.query(models.ChatSession).filter(models.ChatSession.id == id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    db.delete(s)
+    db.commit()
+    return None
 
 @app.post("/api/chat-sessions/{id}/messages", response_model=schemas.ChatMessageOut, status_code=status.HTTP_201_CREATED)
 def create_chat_message(id: str, msg: schemas.ChatMessageCreate, db: Session = Depends(get_db)):

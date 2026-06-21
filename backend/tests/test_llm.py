@@ -2,6 +2,7 @@ import os
 import json
 import threading
 import pytest
+from datetime import datetime
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -114,6 +115,92 @@ def test_local_demo_mock_mode_trigger(client, db_session):
         data = response.json()
         assert len(data["tool_calls"]) == 0
         assert "unavailable" in data["response"]
+
+def test_chat_sessions_list_returns_recent_sessions_with_messages(client, db_session):
+    user = db_session.query(models.User).first()
+    older_session = models.ChatSession(
+        user_id=user.id,
+        status="active",
+        summary="Older chat",
+        updated_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+    newer_session = models.ChatSession(
+        user_id=user.id,
+        status="active",
+        summary="Newer chat",
+        updated_at=datetime(2026, 1, 2, 12, 0, 0),
+    )
+    db_session.add_all([older_session, newer_session])
+    db_session.commit()
+
+    db_session.add_all([
+        models.ChatMessage(
+            chat_session_id=newer_session.id,
+            role="facility_manager",
+            body="Fix a leaking sink",
+            created_at=datetime(2026, 1, 2, 12, 1, 0),
+        ),
+        models.ChatMessage(
+            chat_session_id=newer_session.id,
+            role="assistant",
+            body="I can help with that.",
+            created_at=datetime(2026, 1, 2, 12, 2, 0),
+        ),
+    ])
+    db_session.commit()
+
+    response = client.get("/api/chat-sessions")
+
+    assert response.status_code == 200
+    data = response.json()
+    ids = [session["id"] for session in data]
+    assert ids.index(newer_session.id) < ids.index(older_session.id)
+    listed_newer_session = next(session for session in data if session["id"] == newer_session.id)
+    assert [message["body"] for message in listed_newer_session["messages"]] == [
+        "Fix a leaking sink",
+        "I can help with that.",
+    ]
+
+def test_delete_chat_session_removes_session_and_messages(client, db_session):
+    user = db_session.query(models.User).first()
+    chat_session = models.ChatSession(user_id=user.id, status="active")
+    db_session.add(chat_session)
+    db_session.commit()
+    db_session.add(
+        models.ChatMessage(
+            chat_session_id=chat_session.id,
+            role="facility_manager",
+            body="Fix a leaking sink",
+        )
+    )
+    db_session.commit()
+
+    response = client.delete(f"/api/chat-sessions/{chat_session.id}")
+
+    assert response.status_code == 204
+    assert db_session.query(models.ChatSession).filter(models.ChatSession.id == chat_session.id).first() is None
+    assert (
+        db_session.query(models.ChatMessage)
+        .filter(models.ChatMessage.chat_session_id == chat_session.id)
+        .count()
+        == 0
+    )
+
+def test_patch_chat_session_updates_summary_label(client, db_session):
+    user = db_session.query(models.User).first()
+    chat_session = models.ChatSession(user_id=user.id, status="active", summary=None)
+    db_session.add(chat_session)
+    db_session.commit()
+
+    response = client.patch(
+        f"/api/chat-sessions/{chat_session.id}",
+        json={"summary": "Leaking sink"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["summary"] == "Leaking sink"
+    db_session.refresh(chat_session)
+    assert chat_session.summary == "Leaking sink"
 
 def test_contact_tools_side_effects(db_session):
     # Manually trigger execute_tool for send_vendor_email

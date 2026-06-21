@@ -609,6 +609,9 @@ class ChatSessionCreate(ChatSessionBase):
             raise ValueError(f"Invalid status. Must be one of {CHAT_SESSION_STATUSES}")
         return v
 
+class ChatSessionUpdate(AppBaseModel):
+    summary: Optional[str] = None
+
 class ChatSessionOut(ChatSessionBase):
     id: str
     created_at: datetime

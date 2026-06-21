@@ -324,7 +324,12 @@ class ChatSession(Base):
 
     user = relationship("User", back_populates="chat_sessions")
     work_order = relationship("WorkOrder", back_populates="chat_sessions")
-    messages = relationship("ChatMessage", back_populates="chat_session", cascade="all, delete-orphan")
+    messages = relationship(
+        "ChatMessage",
+        back_populates="chat_session",
+        cascade="all, delete-orphan",
+        order_by="ChatMessage.created_at",
+    )
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
