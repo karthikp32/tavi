@@ -27,6 +27,19 @@ function getConversationMessages(chatSession?: ChatSession | null): Conversation
     }));
 }
 
+function formatDuration(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const secondsLabel = `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+
+  if (minutes === 0) {
+    return secondsLabel;
+  }
+
+  const minutesLabel = `${minutes} ${minutes === 1 ? "min" : "mins"}`;
+  return seconds === 0 ? minutesLabel : `${minutesLabel} ${secondsLabel}`;
+}
+
 export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState<ConversationMessage[]>(() =>
@@ -36,14 +49,20 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
   const [workOrderId, setWorkOrderId] = useState<string | null>(chatSession?.work_order_id ?? null);
   const [isLoading, setIsLoading] = useState(false);
   const [thinkingSeconds, setThinkingSeconds] = useState(0);
+  const [workedSeconds, setWorkedSeconds] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const thinkingSecondsRef = useRef(0);
 
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    thinkingSecondsRef.current = thinkingSeconds;
+  }, [thinkingSeconds]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -69,6 +88,7 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
     setMessages((prev) => [...prev, { role: "user", body: message }]);
     setValue("");
     setIsLoading(true);
+    setWorkedSeconds(null);
     setError(null);
 
     try {
@@ -86,6 +106,7 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
         setWorkOrderId(result.work_order_id);
       }
       setMessages((prev) => [...prev, { role: "assistant", body: result.response }]);
+      setWorkedSeconds(Math.max(thinkingSecondsRef.current, 1));
     } catch {
       if (abortController.signal.aborted) {
         return;
@@ -112,6 +133,7 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
   }
 
   const displayedThinkingSeconds = Math.max(thinkingSeconds, 1);
+  const displayedThinkingDuration = formatDuration(displayedThinkingSeconds);
 
   return (
     <div className="flex w-full max-w-2xl flex-col gap-4">
@@ -146,8 +168,16 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
       ) : null}
 
       {isLoading ? (
-        <p className="text-sm text-tavi-navy/50">
-          Tavi Agent is thinking… {displayedThinkingSeconds}s
+        <p className="flex items-center gap-2 text-sm text-tavi-navy/50" aria-live="polite">
+          <span
+            aria-hidden="true"
+            className="h-3 w-3 animate-spin rounded-full border-2 border-tavi-navy/20 border-t-tavi-indigo"
+          />
+          Thinking ({displayedThinkingDuration})
+        </p>
+      ) : workedSeconds !== null ? (
+        <p className="text-sm text-tavi-navy/50" aria-live="polite">
+          Worked ({formatDuration(workedSeconds)})
         </p>
       ) : null}
       {error ? <ErrorState message={error} /> : null}

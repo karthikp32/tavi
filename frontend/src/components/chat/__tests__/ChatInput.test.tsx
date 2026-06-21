@@ -229,9 +229,22 @@ describe("ChatInput", () => {
     expect(signal?.aborted).toBe(true);
   });
 
-  it("shows elapsed thinking time while waiting for the assistant response", () => {
+  it("shows thinking and worked durations for the assistant response", async () => {
     vi.useFakeTimers();
-    vi.mocked(sendLlmMessage).mockImplementation(() => new Promise(() => {}));
+    let resolveMessage:
+      | ((result: {
+          response: string;
+          chat_session_id: string;
+          work_order_id: string | null;
+          tool_calls: never[];
+        }) => void)
+      | undefined;
+    vi.mocked(sendLlmMessage).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMessage = resolve;
+        }),
+    );
 
     render(<ChatInput />);
 
@@ -240,13 +253,31 @@ describe("ChatInput", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-    expect(screen.getByText("Tavi Agent is thinking… 1s")).toBeInTheDocument();
+    expect(screen.getByText("Thinking (1 second)")).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(screen.getByText("Tavi Agent is thinking… 2s")).toBeInTheDocument();
+    expect(screen.getByText("Thinking (2 seconds)")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(88000);
+    });
+
+    expect(screen.getByText("Thinking (1 min 30 seconds)")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveMessage?.({
+        response: "I can help with that.",
+        chat_session_id: "session_1",
+        work_order_id: null,
+        tool_calls: [],
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Worked (1 min 30 seconds)")).toBeInTheDocument();
   });
 
   it("shows an error state when the request fails", async () => {
