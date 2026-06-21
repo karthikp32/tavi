@@ -20,6 +20,37 @@ const ratingMarks = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"];
 const MIN_PAGE_SIZE = 6;
 const MAX_PAGE_SIZE = 18;
 
+const statusRank: Record<string, number> = {
+  verified: 0,
+  not_required: 1,
+  unknown: 2,
+  unverified: 3,
+  expired: 4,
+};
+
+function compareDescending(a: number | null, b: number | null): number {
+  return (b ?? -1) - (a ?? -1);
+}
+
+function compareAscending(a: number | null, b: number | null): number {
+  return (a ?? Infinity) - (b ?? Infinity);
+}
+
+function compareStatus(a: string | null, b: string | null): number {
+  return (statusRank[a ?? "unknown"] ?? 2) - (statusRank[b ?? "unknown"] ?? 2);
+}
+
+function compareVendors(a: Vendor, b: Vendor): number {
+  return (
+    compareDescending(a.rating, b.rating) ||
+    compareDescending(a.quality_score, b.quality_score) ||
+    compareDescending(a.availability_score, b.availability_score) ||
+    compareAscending(a.risk_score, b.risk_score) ||
+    compareStatus(a.license_status, b.license_status) ||
+    compareStatus(a.insurance_status, b.insurance_status)
+  );
+}
+
 function getViewportPageSize() {
   if (typeof window === "undefined") return 10;
 
@@ -75,12 +106,14 @@ export default function VendorsPage() {
     };
   }, [city, trade, minRating]);
 
-  const totalPages = Math.max(1, Math.ceil(vendors.length / pageSize));
+  const sortedVendors = useMemo(() => [...vendors].sort(compareVendors), [vendors]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedVendors.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * pageSize;
   const paginatedVendors = useMemo(
-    () => vendors.slice(pageStart, pageStart + pageSize),
-    [vendors, pageStart, pageSize],
+    () => sortedVendors.slice(pageStart, pageStart + pageSize),
+    [sortedVendors, pageStart, pageSize],
   );
 
   const columns: TableColumn<Vendor>[] = [
