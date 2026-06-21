@@ -44,6 +44,38 @@ describe("ChatInput", () => {
     );
   });
 
+  it("renders assistant markdown as formatted content", async () => {
+    vi.mocked(sendLlmMessage).mockResolvedValue({
+      response: [
+        "## Draft work orders",
+        "",
+        "| Title | Facility | Status |",
+        "|---|---|---|",
+        "| Panel label audit | Chicago Branch | `ready_for_vendor_discovery` |",
+        "",
+        "- Confirm the scope",
+        "- Start vendor discovery",
+      ].join("\n"),
+      chat_session_id: "session_1",
+      work_order_id: null,
+      tool_calls: [],
+    });
+
+    render(<ChatInput />);
+
+    fireEvent.change(screen.getByPlaceholderText(/describe your work order/i), {
+      target: { value: "Show my work orders" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(await screen.findByRole("heading", { name: "Draft work orders" })).toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Title" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "Panel label audit" })).toBeInTheDocument();
+    expect(screen.getByText("ready_for_vendor_discovery").tagName).toBe("CODE");
+    expect(screen.getByText("Confirm the scope").tagName).toBe("LI");
+  });
+
   it("renders initial messages from a selected chat session", () => {
     render(
       <ChatInput

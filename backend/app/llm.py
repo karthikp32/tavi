@@ -67,6 +67,40 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "list_user_work_orders",
+            "description": "List all work orders owned by a facility-manager user. Use this before discussing a user's existing work orders when you do not already know the work order IDs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "The facility manager user ID whose work orders should be listed. Use the default seeded user id (f3089d70-d4cf-4ca6-bdfd-7c22718e2036) when no other authenticated user id is available.",
+                    }
+                },
+                "required": ["user_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_facilities",
+            "description": "List all facilities owned by a facility-manager user. Use this to identify valid facility IDs and locations before creating or filtering work orders.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "The facility manager user ID whose facilities should be listed. Use the default seeded user id (f3089d70-d4cf-4ca6-bdfd-7c22718e2036) when no other authenticated user id is available.",
+                    }
+                },
+                "required": ["user_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "create_work_order",
             "description": "Create a new work order. Call this only after trade, city, scope, timing, budget, and urgency are clarified. Make sure city, bidding_order, bid_deadline_at are specified when creating the work order.",
             "parameters": {
@@ -432,9 +466,58 @@ def serialize_model(obj) -> Dict[str, Any]:
     return res
 
 
+def _get_facility_manager_user(db: Session, user_id: str) -> Optional[Dict[str, str]]:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return {"error": f"User {user_id} not found"}
+    if user.user_type != "facility_manager":
+        return {"error": "User is not a facility manager"}
+    return None
+
+
 # ----------------- Tool Dispatcher Implementation -----------------
 
 # ----------------- Separate Tool Functions -----------------
+
+
+def tool_list_user_work_orders(
+    db: Session, user_id: str, **kwargs
+) -> List[Dict[str, Any]] | Dict[str, str]:
+    user_error = _get_facility_manager_user(db, user_id)
+    if user_error:
+        return user_error
+
+    work_orders = (
+        db.query(models.WorkOrder)
+        .filter(models.WorkOrder.user_id == user_id)
+        .order_by(models.WorkOrder.updated_at.desc())
+        .all()
+    )
+
+    results = []
+    for wo in work_orders:
+        wo_dict = serialize_model(wo)
+        wo_dict["facility_name"] = wo.facility.name if wo.facility else None
+        wo_dict["facility_address"] = wo.facility.address if wo.facility else None
+        wo_dict["facility_city"] = wo.facility.city if wo.facility else None
+        results.append(wo_dict)
+    return results
+
+
+def tool_list_facilities(
+    db: Session, user_id: str, **kwargs
+) -> List[Dict[str, Any]] | Dict[str, str]:
+    user_error = _get_facility_manager_user(db, user_id)
+    if user_error:
+        return user_error
+
+    facilities = (
+        db.query(models.Facility)
+        .filter(models.Facility.user_id == user_id)
+        .order_by(models.Facility.name.asc())
+        .all()
+    )
+    return [serialize_model(facility) for facility in facilities]
 
 
 def tool_create_work_order(
@@ -935,6 +1018,8 @@ def tool_update_bid(
 # ----------------- Tool Dispatcher Implementation -----------------
 
 TOOL_FUNCTIONS = {
+    "list_user_work_orders": tool_list_user_work_orders,
+    "list_facilities": tool_list_facilities,
     "create_work_order": tool_create_work_order,
     "update_work_order": tool_update_work_order,
     "get_work_order": tool_get_work_order,

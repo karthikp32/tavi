@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "../ui/Button";
 import { ErrorState } from "../ui/ErrorState";
+import { MarkdownMessage } from "./MarkdownMessage";
 import { sendLlmMessage } from "../../lib/api/llm";
 import type { ChatSession } from "../../lib/types";
 
@@ -108,7 +109,11 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
                   : "self-start rounded-lg bg-tavi-pale-blue/60 px-4 py-2 text-sm text-tavi-navy"
               }
             >
-              {message.body}
+              {message.role === "assistant" ? (
+                <MarkdownMessage content={message.body} />
+              ) : (
+                message.body
+              )}
             </div>
           ))}
         </div>

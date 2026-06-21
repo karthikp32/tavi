@@ -313,6 +313,76 @@ def test_search_vendors_tool_rejects_non_positive_target_budget(db_session):
 
     assert res == {"error": "target_budget must be greater than 0"}
 
+def test_list_facilities_tool_returns_only_facility_manager_facilities(db_session):
+    user = db_session.query(models.User).filter(models.User.user_type == "facility_manager").first()
+    other_user = models.User(
+        name="Other Manager",
+        email="other-manager@example.com",
+        user_type="facility_manager",
+    )
+    db_session.add(other_user)
+    db_session.commit()
+    other_facility = models.Facility(
+        user_id=other_user.id,
+        name="Other Facility",
+        address="1 Other Way",
+        city="Boston",
+        state="MA",
+    )
+    db_session.add(other_facility)
+    db_session.commit()
+
+    res = llm.execute_tool(db_session, "list_facilities", {"user_id": user.id})
+
+    assert "list_facilities" in llm.TOOL_FUNCTIONS
+    assert any(tool["function"]["name"] == "list_facilities" for tool in llm.TOOLS)
+    assert {facility["name"] for facility in res} == {"Chicago Branch", "LA Office", "NYC HQ"}
+    assert other_facility.id not in {facility["id"] for facility in res}
+
+def test_list_user_work_orders_tool_returns_only_facility_manager_work_orders(db_session):
+    user = db_session.query(models.User).filter(models.User.user_type == "facility_manager").first()
+    other_user = models.User(
+        name="Other Manager",
+        email="other-workorders@example.com",
+        user_type="facility_manager",
+    )
+    db_session.add(other_user)
+    db_session.commit()
+    other_work_order = models.WorkOrder(
+        user_id=other_user.id,
+        title="Other user's work order",
+        description="Should not be visible to the seeded manager.",
+        trade="Cleaning",
+        status="draft",
+    )
+    db_session.add(other_work_order)
+    db_session.commit()
+
+    res = llm.execute_tool(db_session, "list_user_work_orders", {"user_id": user.id})
+
+    assert "list_user_work_orders" in llm.TOOL_FUNCTIONS
+    assert any(tool["function"]["name"] == "list_user_work_orders" for tool in llm.TOOLS)
+    assert len(res) == 10
+    assert {work_order["user_id"] for work_order in res} == {user.id}
+    assert other_work_order.id not in {work_order["id"] for work_order in res}
+    assert all("facility_name" in work_order for work_order in res)
+
+def test_facility_manager_list_tools_reject_non_facility_manager_user(db_session):
+    vendor_user = models.User(
+        name="Vendor User",
+        email="vendor-user@example.com",
+        user_type="vendor",
+    )
+    db_session.add(vendor_user)
+    db_session.commit()
+
+    assert llm.execute_tool(db_session, "list_facilities", {"user_id": vendor_user.id}) == {
+        "error": "User is not a facility manager"
+    }
+    assert llm.execute_tool(
+        db_session, "list_user_work_orders", {"user_id": vendor_user.id}
+    ) == {"error": "User is not a facility manager"}
+
 def test_multi_turn_tool_execution_loop(client, db_session):
     # Mock OpenRouter API stream returning a tool call first, then a text response
     user = db_session.query(models.User).first()
