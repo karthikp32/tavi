@@ -189,6 +189,6 @@ describe("WorkOrderReviewView", () => {
       });
     });
 
-    expect(await screen.findByText(/Logged sms \(outbound\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Text sent to Acme Plumbing/)).toBeInTheDocument();
   });
 });

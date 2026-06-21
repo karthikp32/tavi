@@ -16,6 +16,7 @@ import { getWorkOrderCandidates, contactWorkOrderCandidate } from "@/lib/api/can
 import { getWorkOrderBids } from "@/lib/api/bids";
 import { getWorkOrderTimeline, type TimelineEntry } from "@/lib/api/timeline";
 import { getVendor } from "@/lib/api/vendors";
+import { describeCommunicationEvent } from "@/lib/format";
 import type { Bid, CommunicationEvent, Vendor, WorkOrder, WorkOrderCandidate } from "@/lib/types";
 
 interface WorkOrderReviewViewProps {
@@ -320,7 +321,7 @@ export function WorkOrderReviewView({ workOrderId }: WorkOrderReviewViewProps) {
                           {contactError ? <ErrorState message={contactError} /> : null}
                           {lastEvent ? (
                             <p className="text-sm text-tavi-navy/70">
-                              Logged {lastEvent.channel} ({lastEvent.direction}): {lastEvent.body}
+                              {describeCommunicationEvent(lastEvent, vendor?.name ?? "the vendor")}
                             </p>
                           ) : null}
                         </li>
