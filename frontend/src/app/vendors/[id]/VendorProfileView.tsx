@@ -11,6 +11,7 @@ import { getVendor, contactVendor } from "@/lib/api/vendors";
 import { getWorkOrderCandidates, contactWorkOrderCandidate } from "@/lib/api/candidates";
 import { createWorkOrder, getWorkOrders } from "@/lib/api/work-orders";
 import { DEFAULT_USER_ID } from "@/lib/constants";
+import { describeCommunicationEvent } from "@/lib/format";
 import type { CommunicationEvent, Vendor, WorkOrder, WorkOrderCandidate } from "@/lib/types";
 
 interface VendorProfileViewProps {
@@ -264,7 +265,7 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
             {contactError ? <ErrorState message={contactError} /> : null}
             {lastEvent ? (
               <p className="text-sm text-tavi-navy/70">
-                Logged {lastEvent.channel} ({lastEvent.direction}): {lastEvent.body}
+                {describeCommunicationEvent(lastEvent, vendor.name)}
               </p>
             ) : null}
           </div>

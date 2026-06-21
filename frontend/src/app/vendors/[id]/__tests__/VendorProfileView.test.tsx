@@ -207,7 +207,7 @@ describe("VendorProfileView", () => {
       });
     });
 
-    expect(await screen.findByText(/Logged email \(outbound\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Email sent to Acme Plumbing/)).toBeInTheDocument();
   });
 
   it("uses the candidate contact endpoint when a matching candidate exists for the selected work order", async () => {
