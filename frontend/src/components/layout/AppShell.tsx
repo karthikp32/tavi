@@ -17,13 +17,13 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
 
   return (
-    <div className="flex min-h-screen flex-col bg-tavi-pale-blue/40">
+    <div className="flex min-h-screen flex-col bg-background">
       <header className="border-b border-tavi-navy/10 bg-white">
-        <nav className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-4">
-          <Link href="/" className="text-sm font-semibold text-tavi-navy">
+        <nav className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-5">
+          <Link href="/" className="text-sm font-bold uppercase tracking-wide text-tavi-navy">
             Tavi
           </Link>
-          <ul className="flex gap-4">
+          <ul className="flex gap-8">
             {navLinks.map((link) => {
               const isActive =
                 pathname === link.href || pathname?.startsWith(`${link.href}/`);
@@ -34,8 +34,8 @@ export function AppShell({ children }: AppShellProps) {
                     aria-current={isActive ? "page" : undefined}
                     className={
                       isActive
-                        ? "text-sm font-medium text-tavi-indigo"
-                        : "text-sm font-medium text-tavi-navy/70 hover:text-tavi-indigo"
+                        ? "text-xs font-semibold uppercase tracking-wide text-tavi-indigo"
+                        : "text-xs font-semibold uppercase tracking-wide text-tavi-navy/60 hover:text-tavi-indigo"
                     }
                   >
                     {link.label}

@@ -9,9 +9,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: "bg-tavi-navy text-white hover:bg-tavi-indigo",
-  secondary: "bg-white text-tavi-navy border border-tavi-navy/20 hover:bg-tavi-pale-blue/40",
-  ghost: "bg-transparent text-tavi-navy/80 hover:bg-tavi-pale-blue/40",
+  primary: "bg-tavi-accent text-tavi-navy hover:bg-tavi-navy hover:text-white",
+  secondary: "bg-white text-tavi-navy border border-tavi-navy/20 hover:border-tavi-navy/40",
+  ghost: "bg-transparent text-tavi-navy/80 hover:bg-tavi-pale-blue/60",
 };
 
 export function Button({
@@ -24,7 +24,7 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className ?? ""}`}
+      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${className ?? ""}`}
       {...rest}
     >
       {icon}

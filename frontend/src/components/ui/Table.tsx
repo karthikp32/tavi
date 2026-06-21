@@ -18,7 +18,7 @@ export function Table<T>({ columns, rows, getRowKey }: TableProps<T>) {
       <thead>
         <tr className="border-b border-tavi-navy/10 text-left text-tavi-navy/60">
           {columns.map((column) => (
-            <th key={column.key} className="px-3 py-2 font-medium">
+            <th key={column.key} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide">
               {column.header}
             </th>
           ))}

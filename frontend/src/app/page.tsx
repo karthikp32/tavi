@@ -214,7 +214,7 @@ export default function HomePage() {
         </aside>
 
         <div className="flex flex-1 flex-col items-center justify-center gap-6 py-12 text-center">
-          <h1 className="text-3xl font-semibold text-tavi-navy">Tavi</h1>
+          <h1 className="text-5xl font-bold tracking-tight text-tavi-navy">Tavi</h1>
           <p className="max-w-xl text-tavi-navy/70">
             Your command center for trade work orders. Describe what you need and Tavi will find,
             contact, and compare vendors for you.
