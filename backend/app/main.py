@@ -62,10 +62,16 @@ def ensure_login_token_columns():
         if not inspector.has_table(table):
             continue
         existing_columns = {column["name"] for column in inspector.get_columns(table)}
-        if "login_token" in existing_columns:
-            continue
+        if "login_token" not in existing_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN login_token VARCHAR"))
+            except OperationalError:
+                pass
         with engine.begin() as connection:
-            connection.execute(text(f"ALTER TABLE {table} ADD COLUMN login_token VARCHAR"))
+            connection.execute(
+                text(f"CREATE UNIQUE INDEX IF NOT EXISTS ix_{table}_login_token ON {table} (login_token)")
+            )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -99,12 +105,16 @@ def seed_database(db: Session = Depends(get_db)):
 @app.post("/api/auth/login", response_model=schemas.LoginResponse)
 def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.login_token == payload.token).first()
+    vendor = db.query(models.Vendor).filter(models.Vendor.login_token == payload.token).first()
+
+    if user and vendor:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     if user:
         return schemas.LoginResponse(
             id=user.id, type=user.user_type, name=user.name, trade=user.trade, company_id=user.company_id
         )
 
-    vendor = db.query(models.Vendor).filter(models.Vendor.login_token == payload.token).first()
     if vendor:
         return schemas.LoginResponse(
             id=vendor.id, type="vendor", name=vendor.name, trade=vendor.trade, company_id=vendor.company_id

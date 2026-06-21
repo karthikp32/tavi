@@ -47,7 +47,7 @@ class User(Base):
     user_type = Column(String, nullable=False)  # facility_manager, vendor, admin
     trade = Column(String, nullable=True)
     company_name = Column(String, nullable=True)
-    login_token = Column(String, nullable=True)
+    login_token = Column(String, nullable=True, unique=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     company = relationship("Company", back_populates="users")
@@ -176,7 +176,7 @@ class Vendor(Base):
     availability_score = Column(Numeric, nullable=True)
     risk_score = Column(Numeric, nullable=True)
     score_evidence = Column(JSON, nullable=True)
-    login_token = Column(String, nullable=True)
+    login_token = Column(String, nullable=True, unique=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

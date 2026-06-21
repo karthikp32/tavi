@@ -28,7 +28,9 @@ export function VendorPlaceBidForm({ workOrderId, vendorId, onSuccess }: VendorP
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextErrors: Record<string, string> = {};
-    if (!amount || Number(amount) <= 0) nextErrors.amount = "Bid amount is required";
+    if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      nextErrors.amount = "Bid amount is required";
+    }
     if (
       arrivalWindowStart &&
       arrivalWindowEnd &&

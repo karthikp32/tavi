@@ -23,11 +23,13 @@ export function getSession(): Session | null {
 
 export function setSession(session: Session): void {
   const value = encodeURIComponent(JSON.stringify(session));
-  document.cookie = `${COOKIE_NAME}=${value}; path=/; max-age=604800; samesite=lax`;
+  const secure = location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `${COOKIE_NAME}=${value}; path=/; max-age=604800; samesite=lax${secure}`;
 }
 
 export function clearSession(): void {
-  document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; samesite=lax`;
+  const secure = location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; samesite=lax${secure}`;
 }
 
 export function homePathForSession(session: Session): string {
