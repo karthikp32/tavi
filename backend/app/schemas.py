@@ -629,6 +629,7 @@ class LoginResponse(AppBaseModel):
     name: str
     trade: Optional[str] = None
     company_id: Optional[str] = None
+    login_token: str
 
 # ----------------- LLM Schemas -----------------
 

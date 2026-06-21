@@ -7,6 +7,7 @@ export interface LoginResponse {
   name: string;
   trade: string | null;
   company_id: string | null;
+  login_token: string;
 }
 
 export function login(token: string): Promise<LoginResponse> {

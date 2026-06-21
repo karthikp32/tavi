@@ -60,6 +60,52 @@ def db_session():
 def auth_headers(token: str = "facility-manager-1") -> dict[str, str]:
     return {"X-Tavi-Login-Token": token}
 
+def test_vendor_name_login_returns_token_that_authenticates_llm(client, db_session):
+    vendor = db_session.query(models.Vendor).filter(models.Vendor.login_token.isnot(None)).first()
+
+    login_response = client.post("/api/auth/login", json={"token": vendor.name})
+
+    assert login_response.status_code == 200
+    identity = login_response.json()
+    assert identity["id"] == vendor.id
+    assert identity["type"] == "vendor"
+    assert identity["login_token"] == vendor.login_token
+
+    llm_response = client.post(
+        "/api/llm/messages",
+        json={
+            "message": "Solve a complex physics problem",
+            "actor_type": "vendor",
+            "actor_id": vendor.id,
+        },
+        headers=auth_headers(vendor.name),
+    )
+
+    assert llm_response.status_code == 200
+
+def test_vendor_can_reload_own_llm_chat_history(client, db_session):
+    vendor = db_session.query(models.Vendor).filter(models.Vendor.login_token.isnot(None)).first()
+
+    llm_response = client.post(
+        "/api/llm/messages",
+        json={
+            "message": "Solve a complex physics problem",
+            "actor_type": "vendor",
+            "actor_id": vendor.id,
+        },
+        headers=auth_headers(vendor.login_token),
+    )
+    assert llm_response.status_code == 200
+
+    chat_response = client.get("/api/chat-sessions", headers=auth_headers(vendor.login_token))
+
+    assert chat_response.status_code == 200
+    sessions = chat_response.json()
+    assert len(sessions) == 1
+    assert sessions[0]["id"] == llm_response.json()["chat_session_id"]
+    assert sessions[0]["user_id"] == vendor.id
+    assert [message["role"] for message in sessions[0]["messages"]] == ["vendor", "assistant"]
+
 def test_schema_creation_and_seeding(client):
     # Verify we have seeded users and companies
     response = client.get("/api/work-orders")

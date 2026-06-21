@@ -117,6 +117,12 @@ def get_current_llm_actor(
         return {"id": user.id, "type": user.user_type, "user": user, "vendor": None}
 
     vendor = db.query(models.Vendor).filter(models.Vendor.login_token == x_tavi_login_token).first()
+    if not vendor:
+        vendor = (
+            db.query(models.Vendor)
+            .filter(func.lower(models.Vendor.name) == x_tavi_login_token.lower())
+            .first()
+        )
     if vendor:
         return {"id": vendor.id, "type": "vendor", "user": None, "vendor": vendor}
 
@@ -152,12 +158,22 @@ def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
 
     if user:
         return schemas.LoginResponse(
-            id=user.id, type=user.user_type, name=user.name, trade=user.trade, company_id=user.company_id
+            id=user.id,
+            type=user.user_type,
+            name=user.name,
+            trade=user.trade,
+            company_id=user.company_id,
+            login_token=user.login_token,
         )
 
     if vendor:
         return schemas.LoginResponse(
-            id=vendor.id, type="vendor", name=vendor.name, trade=vendor.trade, company_id=vendor.company_id
+            id=vendor.id,
+            type="vendor",
+            name=vendor.name,
+            trade=vendor.trade,
+            company_id=vendor.company_id,
+            login_token=vendor.login_token,
         )
 
     raise HTTPException(status_code=401, detail="Invalid token")
@@ -859,10 +875,10 @@ def get_work_order_timeline(id: str, db: Session = Depends(get_db)):
 def create_chat_session(
     session: schemas.ChatSessionCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_actor: Dict[str, Any] = Depends(get_current_llm_actor),
 ):
     db_session = models.ChatSession(
-        user_id=current_user.id,
+        user_id=current_actor["id"],
         work_order_id=session.work_order_id,
         status=session.status,
         summary=session.summary,
@@ -877,12 +893,12 @@ def create_chat_session(
 @app.get("/api/chat-sessions", response_model=List[schemas.ChatSessionOut])
 def list_chat_sessions(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_actor: Dict[str, Any] = Depends(get_current_llm_actor),
 ):
     return (
         db.query(models.ChatSession)
         .options(selectinload(models.ChatSession.messages))
-        .filter(models.ChatSession.user_id == current_user.id)
+        .filter(models.ChatSession.user_id == current_actor["id"])
         .order_by(models.ChatSession.updated_at.desc())
         .all()
     )
@@ -891,11 +907,11 @@ def list_chat_sessions(
 def get_chat_session(
     id: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_actor: Dict[str, Any] = Depends(get_current_llm_actor),
 ):
     s = db.query(models.ChatSession).filter(
         models.ChatSession.id == id,
-        models.ChatSession.user_id == current_user.id,
+        models.ChatSession.user_id == current_actor["id"],
     ).first()
     if not s:
         raise HTTPException(status_code=404, detail="Chat session not found")
@@ -906,11 +922,11 @@ def patch_chat_session(
     id: str,
     update: schemas.ChatSessionUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_actor: Dict[str, Any] = Depends(get_current_llm_actor),
 ):
     s = db.query(models.ChatSession).filter(
         models.ChatSession.id == id,
-        models.ChatSession.user_id == current_user.id,
+        models.ChatSession.user_id == current_actor["id"],
     ).first()
     if not s:
         raise HTTPException(status_code=404, detail="Chat session not found")
@@ -925,11 +941,11 @@ def patch_chat_session(
 def delete_chat_session(
     id: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_actor: Dict[str, Any] = Depends(get_current_llm_actor),
 ):
     s = db.query(models.ChatSession).filter(
         models.ChatSession.id == id,
-        models.ChatSession.user_id == current_user.id,
+        models.ChatSession.user_id == current_actor["id"],
     ).first()
     if not s:
         raise HTTPException(status_code=404, detail="Chat session not found")
@@ -942,11 +958,11 @@ def create_chat_message(
     id: str,
     msg: schemas.ChatMessageCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_actor: Dict[str, Any] = Depends(get_current_llm_actor),
 ):
     s = db.query(models.ChatSession).filter(
         models.ChatSession.id == id,
-        models.ChatSession.user_id == current_user.id,
+        models.ChatSession.user_id == current_actor["id"],
     ).first()
     if not s:
         raise HTTPException(status_code=404, detail="Chat session not found")
