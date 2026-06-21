@@ -189,6 +189,7 @@ describe("WorkOrderReviewView", () => {
       });
     });
 
-    expect(await screen.findByText(/Text sent to Acme Plumbing/)).toBeInTheDocument();
+    expect(await screen.findByText("Text sent to Acme Plumbing")).toBeInTheDocument();
+    expect(screen.queryByText(/Text sent to Acme Plumbing:/)).not.toBeInTheDocument();
   });
 });

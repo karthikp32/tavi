@@ -8,5 +8,5 @@ const channelPhrases: Record<string, string> = {
 
 export function describeCommunicationEvent(event: CommunicationEvent, recipientName: string): string {
   const phrase = channelPhrases[event.channel] ?? "Message logged for";
-  return `${phrase} ${recipientName}: "${event.body}"`;
+  return `${phrase} ${recipientName}`;
 }
