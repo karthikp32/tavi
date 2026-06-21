@@ -48,7 +48,7 @@ export default function LoginPage() {
         className="flex w-full max-w-sm flex-col gap-4 rounded-lg bg-white p-6 shadow-sm"
         onSubmit={handleSubmit}
       >
-        <FormField label="Login token" htmlFor="token">
+        <FormField label="Login token or vendor company name" htmlFor="token">
           <input
             id="token"
             name="token"
@@ -59,6 +59,7 @@ export default function LoginPage() {
             className="rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy focus:border-tavi-indigo focus:outline-none"
           />
           <p className="text-xs text-tavi-navy/50">Demo tokens: {DEMO_TOKENS.join(", ")}</p>
+          <p className="text-xs text-tavi-navy/50">Vendors can also log in with their company name.</p>
         </FormField>
         {error ? <ErrorState message={error} /> : null}
         <Button type="submit" disabled={isSubmitting || !token.trim()}>
