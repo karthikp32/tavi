@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
+from urllib.parse import quote_plus
 from sqlalchemy.orm import Session
 from .database import SessionLocal, Base, engine
 from .models import (
@@ -53,36 +54,153 @@ def seed_db(db: Session):
     )
     db.add(fm_company)
 
-    vendor_companies = []
-    trades = ["Plumbing", "Electrical", "HVAC", "Cleaning", "Lawncare", "General maintenance"]
-    city_cycle = ["New York", "Los Angeles", "Chicago", "New York", "Los Angeles"]
     city_details = {
         "New York": ("NY", "10002", Decimal("40.75"), Decimal("-73.98")),
         "Los Angeles": ("CA", "90001", Decimal("34.05"), Decimal("-118.24")),
         "Chicago": ("IL", "60601", Decimal("41.88"), Decimal("-87.63")),
     }
+    yelp_search_terms = {
+        "Plumbing": "Plumbers",
+        "Electrical": "Electricians",
+        "HVAC": "Heating & Air Conditioning",
+        "Cleaning": "Home Cleaning",
+        "Lawncare": "Landscaping",
+        "General maintenance": "Handyman",
+    }
 
-    vendor_idx = 0
-    for trade in trades:
-        for city in city_cycle:
-            state, postal_code, _, _ = city_details[city]
-            vendor_idx += 1
-            name = f"{city} {trade} Team {city_cycle.index(city) + 1}-{vendor_idx}"
-            slug = "".join(ch for ch in name.lower() if ch.isalnum())
-            vc = Company(
-                id=str(uuid.uuid4()),
-                name=f"{name} Inc.",
-                company_type="vendor",
-                trade=trade,
-                phone=f"555-02{vendor_idx:02d}",
-                email=f"contact@{slug}.com",
-                address=f"{200 + vendor_idx} Broadway",
-                city=city,
-                state=state,
-                postal_code=postal_code,
-            )
-            db.add(vc)
-            vendor_companies.append((vc, city, trade, vendor_idx))
+    def yelp_search_url(trade: str, city: str) -> str:
+        state = city_details[city][0]
+        return (
+            "https://www.yelp.com/search?"
+            f"find_desc={quote_plus(yelp_search_terms[trade])}"
+            f"&find_loc={quote_plus(f'{city}, {state}')}"
+        )
+
+    verified_contact_details = {
+        "Green Tech Plumbing": {
+            "phone": "847-518-5338",
+            "email": "info@greentechplumbing.com",
+            "address": "1017 S. Graceland Ave",
+            "source_url": "https://greentechplumbing.com/",
+        },
+        "Four Seasons Heating, Air Conditioning, Plumbing": {
+            "phone": "1-866-444-2404",
+            "source_url": "https://www.fourseasonsheatingcooling.com/",
+        },
+    }
+
+    # Yelp-backed local businesses, five per trade per city.
+    vendor_specs = [
+        ("Sam's Plumbing Services", "Plumbing", "New York", "4.7", 167),
+        ("AXR Mechanical", "Plumbing", "New York", "5.0", 36),
+        ("Zabivay", "Plumbing", "New York", "4.9", 116),
+        ("Michael Donahue Plumbing & Heating", "Plumbing", "New York", "4.7", 85),
+        ("Pro Plumbing & Heating", "Plumbing", "New York", "4.7", 91),
+        ("Rishon Plumbing & Water Heaters", "Plumbing", "Los Angeles", "5.0", 903),
+        ("Victor's Rooter & Plumbing", "Plumbing", "Los Angeles", "4.8", 638),
+        ("Right Price Rooter and Plumbing", "Plumbing", "Los Angeles", "4.9", 338),
+        ("Cali Rooter & Plumbing", "Plumbing", "Los Angeles", "5.0", 423),
+        ("Gary's Rooter and Hydro-Jetting Service", "Plumbing", "Los Angeles", "5.0", 919),
+        ("Green Tech Plumbing", "Plumbing", "Chicago", "4.8", 371),
+        ("Drain-EEZ Plumbing", "Plumbing", "Chicago", "4.8", 530),
+        ("J Sewer & Drain Plumbing", "Plumbing", "Chicago", "4.7", 349),
+        ("Mike The Plumber", "Plumbing", "Chicago", "5.0", 110),
+        ("Scotty's Plumbing", "Plumbing", "Chicago", "5.0", 44),
+        ("Asset Electrician Corp", "Electrical", "New York", "4.9", 181),
+        ("Mikhail Electrician", "Electrical", "New York", "4.8", 96),
+        ("Electric A/C", "Electrical", "New York", "4.8", 105),
+        ("Hitchingham Electric", "Electrical", "New York", "4.8", 43),
+        ("DB Electric", "Electrical", "New York", "5.0", 16),
+        ("Josh the Honest Electrician", "Electrical", "Los Angeles", "4.8", 77),
+        ("Alex & Alex Electrical Services", "Electrical", "Los Angeles", "5.0", 341),
+        ("MH Electric", "Electrical", "Los Angeles", "5.0", 409),
+        ("East West Electric", "Electrical", "Los Angeles", "4.9", 714),
+        ("IN-N-OUT Electrical Service", "Electrical", "Los Angeles", "4.8", 632),
+        ("T & D Electrical", "Electrical", "Chicago", "4.8", 110),
+        ("Logan Square Electric", "Electrical", "Chicago", "5.0", 5),
+        ("Arnold Electrical Services", "Electrical", "Chicago", "4.6", 237),
+        ("Alambre Electric", "Electrical", "Chicago", "4.8", 13),
+        ("E Contractor Company", "Electrical", "Chicago", "4.9", 52),
+        ("Airnizer HVAC", "HVAC", "New York", "4.8", 152),
+        ("Fusion HVAC & Appliance Repair", "HVAC", "New York", "4.8", 103),
+        ("StayCoolNYC", "HVAC", "New York", "5.0", 39),
+        ("Prime Air Group", "HVAC", "New York", "4.9", 97),
+        ("HVAC Hunters", "HVAC", "New York", "4.9", 39),
+        ("Mike's Air", "HVAC", "Los Angeles", "5.0", 235),
+        ("So Cal Air", "HVAC", "Los Angeles", "5.0", 395),
+        ("California A/C Heating Refrigeration", "HVAC", "Los Angeles", "5.0", 160),
+        ("Villaneda Heating & Air", "HVAC", "Los Angeles", "5.0", 25),
+        ("Pac-West Air Conditioning & Heating", "HVAC", "Los Angeles", "4.8", 216),
+        ("Chicago Appliance Repair Doctor", "HVAC", "Chicago", "4.8", 752),
+        ("Browns Heating & Cooling", "HVAC", "Chicago", "4.7", 308),
+        ("Hero Air", "HVAC", "Chicago", "4.9", 117),
+        ("Preferred Comfort Heating & Cooling", "HVAC", "Chicago", "4.8", 131),
+        ("Chicago HVAC Repair Doctor", "HVAC", "Chicago", "4.7", 211),
+        ("Obsessive Cleaning", "Cleaning", "New York", "4.9", 94),
+        ("Gelmu's Cleaning", "Cleaning", "New York", "4.8", 53),
+        ("Mr Maid NY", "Cleaning", "New York", "4.6", 157),
+        ("Cleany", "Cleaning", "New York", "4.7", 296),
+        ("Elite Supreme Cleaning", "Cleaning", "New York", "4.8", 109),
+        ("Maid For LA Home and Office Cleaning Service", "Cleaning", "Los Angeles", "4.7", 337),
+        ("ALA Cleaning Services", "Cleaning", "Los Angeles", "4.8", 171),
+        ("Mya Cleaning Services", "Cleaning", "Los Angeles", "4.5", 394),
+        ("MaidServe", "Cleaning", "Los Angeles", "4.5", 860),
+        ("Maids Unlimited", "Cleaning", "Los Angeles", "4.9", 204),
+        ("Clean Freaks Cleaning Service", "Cleaning", "Chicago", "4.4", 239),
+        ("Joanna Cleaning Lady", "Cleaning", "Chicago", "4.7", 108),
+        ("King of Maids", "Cleaning", "Chicago", "4.3", 708),
+        ("GetClean", "Cleaning", "Chicago", "4.3", 146),
+        ("Mariia Buchko Services", "Cleaning", "Chicago", "4.9", 34),
+        ("Bed-Stuy Garden Guy", "Lawncare", "New York", "5.0", 37),
+        ("G&C Landscaping", "Lawncare", "New York", "4.6", 29),
+        ("Garden Culture NYC", "Lawncare", "New York", "4.8", 24),
+        ("Ivy League", "Lawncare", "New York", "5.0", 3),
+        ("Angel's Landscaping", "Lawncare", "New York", "5.0", 4),
+        ("Amado Landscaping", "Lawncare", "Los Angeles", "4.7", 212),
+        ("Campos Landscaping", "Lawncare", "Los Angeles", "4.5", 135),
+        ("R & G Gardening Services & Landscaping", "Lawncare", "Los Angeles", "4.8", 94),
+        ("The Gardener", "Lawncare", "Los Angeles", "4.9", 110),
+        ("GR Landscaping", "Lawncare", "Los Angeles", "4.9", 82),
+        ("F Gomez Landscaping", "Lawncare", "Chicago", "4.6", 74),
+        ("Dante's Native Landscape Services", "Lawncare", "Chicago", "4.6", 73),
+        ("Cityscape Landscape", "Lawncare", "Chicago", "4.2", 164),
+        ("Salvador's Landscaping", "Lawncare", "Chicago", "4.2", 66),
+        ("Rafael Landscaping", "Lawncare", "Chicago", "4.3", 66),
+        ("Valera Handyman", "General maintenance", "New York", "5.0", 187),
+        ("S & S Handyman", "General maintenance", "New York", "4.9", 185),
+        ("NYC Handyman", "General maintenance", "New York", "4.9", 296),
+        ("Wow NYC Handy Men", "General maintenance", "New York", "4.9", 63),
+        ("Not Just Handymen", "General maintenance", "New York", "5.0", 14),
+        ("Handyman LA", "General maintenance", "Los Angeles", "4.9", 151),
+        ("Handyman of Los Angeles", "General maintenance", "Los Angeles", "4.9", 56),
+        ("The Affordable & Licensed Handyman", "General maintenance", "Los Angeles", "4.8", 514),
+        ("Handy Eddy", "General maintenance", "Los Angeles", "4.8", 61),
+        ("Egor Handyman", "General maintenance", "Los Angeles", "5.0", 48),
+        ("Loyal Handyman", "General maintenance", "Chicago", "4.9", 250),
+        ("Handy Hero", "General maintenance", "Chicago", "5.0", 12),
+        ("2 Guys Construction", "General maintenance", "Chicago", "4.8", 135),
+        ("Fix It People", "General maintenance", "Chicago", "4.6", 451),
+        ("The Good Guys Handyman", "General maintenance", "Chicago", "4.6", 128),
+    ]
+
+    vendor_companies = []
+    for vendor_idx, (name, trade, city, yelp_rating, yelp_review_count) in enumerate(vendor_specs, start=1):
+        state, postal_code, _, _ = city_details[city]
+        contact_details = verified_contact_details.get(name, {})
+        vc = Company(
+            id=str(uuid.uuid4()),
+            name=name,
+            company_type="vendor",
+            trade=trade,
+            phone=contact_details.get("phone"),
+            email=contact_details.get("email"),
+            address=contact_details.get("address"),
+            city=city,
+            state=state,
+            postal_code=postal_code,
+        )
+        db.add(vc)
+        vendor_companies.append((vc, city, trade, vendor_idx, yelp_rating, yelp_review_count, contact_details))
     db.commit()
 
     # 2. Users
@@ -133,17 +251,19 @@ def seed_db(db: Session):
         "Lawncare": "landscaper",
         "General maintenance": "maintenance-tech",
     }
-    for vc, city, trade, idx in vendor_companies:
+    trade_login_counts = {trade: 0 for trade in trade_login_slugs}
+    for vc, city, trade, idx, yelp_rating, yelp_review_count, contact_details in vendor_companies:
         _, _, latitude, longitude = city_details[city]
         quality = Decimal("0.90") - Decimal(idx % 5) * Decimal("0.03")
         availability = Decimal("0.85") - Decimal(idx % 4) * Decimal("0.04")
         risk = Decimal("0.05") + Decimal(idx % 3) * Decimal("0.04")
-        trade_position = ((idx - 1) % len(city_cycle)) + 1
+        trade_login_counts[trade] += 1
+        trade_position = trade_login_counts[trade]
 
         vendor = Vendor(
             id=str(uuid.uuid4()),
             company_id=vc.id,
-            name=vc.name.replace(" Inc.", ""),
+            name=vc.name,
             trade=trade,
             phone=vc.phone,
             email=vc.email,
@@ -151,14 +271,22 @@ def seed_db(db: Session):
             city=city,
             latitude=latitude,
             longitude=longitude,
-            rating=Decimal("4.8") - Decimal(idx % 4) * Decimal("0.1"),
-            review_count=15 + idx,
+            rating=Decimal(yelp_rating),
+            review_count=yelp_review_count,
             license_status=license_statuses[idx % len(license_statuses)],
             insurance_status=insurance_statuses[idx % len(insurance_statuses)],
             quality_score=quality,
             availability_score=availability,
             risk_score=risk,
-            score_evidence={"license_verified_at": "2026-01-01", "insurance_verified_at": "2026-01-01"},
+            score_evidence={
+                "source": "Yelp search",
+                "yelp_search_url": yelp_search_url(trade, city),
+                "yelp_rating": yelp_rating,
+                "yelp_review_count": yelp_review_count,
+                "contact_source_url": contact_details.get("source_url"),
+                "license_verified_at": "2026-01-01",
+                "insurance_verified_at": "2026-01-01",
+            },
             login_token=f"{trade_login_slugs[trade]}-{trade_position}",
         )
         db.add(vendor)
