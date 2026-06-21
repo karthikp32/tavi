@@ -2,7 +2,7 @@ import anyio
 from fastapi import FastAPI, Depends, HTTPException, Query, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import inspect, text
+from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -104,8 +104,13 @@ def seed_database(db: Session = Depends(get_db)):
 
 @app.post("/api/auth/login", response_model=schemas.LoginResponse)
 def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.login_token == payload.token).first()
-    vendor = db.query(models.Vendor).filter(models.Vendor.login_token == payload.token).first()
+    credential = payload.token.strip()
+    user = db.query(models.User).filter(models.User.login_token == credential).first()
+    vendor = db.query(models.Vendor).filter(models.Vendor.login_token == credential).first()
+    if not vendor:
+        vendor = (
+            db.query(models.Vendor).filter(func.lower(models.Vendor.name) == credential.lower()).first()
+        )
 
     if user and vendor:
         raise HTTPException(status_code=401, detail="Invalid token")
