@@ -129,15 +129,19 @@ describe("HomePage", () => {
     };
     vi.mocked(getChatSessions).mockResolvedValue([{ ...renamedSession, summary: null }]);
     vi.mocked(updateChatSession).mockResolvedValue(renamedSession);
-    vi.spyOn(window, "prompt").mockReturnValue("Leaking sink");
+    const promptSpy = vi.spyOn(window, "prompt");
 
     render(<HomePage />);
 
     expect(await screen.findByRole("button", { name: "Fix a leaking sink" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Chat options for Fix a leaking sink" }));
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    const editInput = screen.getByRole("textbox", { name: "Rename chat" });
+    fireEvent.change(editInput, { target: { value: "Leaking sink" } });
+    fireEvent.keyDown(editInput, { key: "Enter" });
 
     await waitFor(() => {
+      expect(promptSpy).not.toHaveBeenCalled();
       expect(updateChatSession).toHaveBeenCalledWith("session_1", { summary: "Leaking sink" });
       expect(screen.getByRole("button", { name: "Leaking sink" })).toBeInTheDocument();
     });

@@ -117,6 +117,11 @@ export default function WorkOrdersPage() {
     },
     { key: "trade", header: "Trade", render: ({ workOrder }) => workOrder.trade },
     {
+      key: "created_at",
+      header: "Created",
+      render: ({ workOrder }) => new Date(workOrder.created_at).toLocaleString(),
+    },
+    {
       key: "location",
       header: "Location",
       render: ({ workOrder }) => workOrder.facility?.city ?? workOrder.facility?.name ?? "—",

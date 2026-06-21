@@ -68,7 +68,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "create_work_order",
-            "description": "Create a new work order. Call this only after trade, city, scope, timing, budget, and urgency are clarified.",
+            "description": "Create a new work order. Call this only after trade, city, scope, timing, budget, and urgency are clarified. Make sure city, bidding_order, bid_deadline_at are specified when creating the work order.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -960,6 +960,7 @@ def execute_tool(db: Session, name: str, args: Dict[str, Any]) -> Any:
 
 
 # ----------------- OpenRouter Client & Execution Loop -----------------
+
 
 class LlmRequestCancelled(Exception):
     pass
