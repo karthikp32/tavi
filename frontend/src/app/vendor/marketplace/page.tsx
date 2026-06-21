@@ -10,20 +10,29 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Table, type TableColumn } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { getWorkOrders } from "@/lib/api/work-orders";
+import { getWorkOrderBids } from "@/lib/api/bids";
 import { getSession, type Session } from "@/lib/auth";
 import { VendorPlaceBidForm } from "./VendorPlaceBidForm";
-import type { WorkOrder, WorkOrderStatus } from "@/lib/types";
+import type { Bid, WorkOrder, WorkOrderStatus } from "@/lib/types";
 
 const OPEN_STATUSES: WorkOrderStatus[] = ["ready_for_vendor_discovery", "discovering_vendors"];
+const ACTIVE_BID_STATUSES: Bid["status"][] = ["submitted", "accepted"];
 
 function formatCents(cents: number | null): string {
   if (cents === null) return "—";
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function getLowestActiveBid(bids: Bid[]): Bid | null {
+  const active = bids.filter((bid) => ACTIVE_BID_STATUSES.includes(bid.status));
+  if (active.length === 0) return null;
+  return active.reduce((lowest, bid) => (bid.amount_cents < lowest.amount_cents ? bid : lowest));
+}
+
 export default function VendorMarketplacePage() {
   const [session] = useState<Session | null>(() => getSession());
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [bidsByWorkOrderId, setBidsByWorkOrderId] = useState<Record<string, Bid[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bidWorkOrder, setBidWorkOrder] = useState<WorkOrder | null>(null);
@@ -37,10 +46,21 @@ export default function VendorMarketplacePage() {
       setError(null);
       try {
         const all = await getWorkOrders();
-        const open = all.filter(
-          (wo) => wo.trade === session!.trade && OPEN_STATUSES.includes(wo.status),
+        const tradeWorkOrders = all.filter((wo) => wo.trade === session!.trade);
+        const bidLists = await Promise.all(tradeWorkOrders.map((wo) => getWorkOrderBids(wo.id)));
+        const bidsMap: Record<string, Bid[]> = {};
+        tradeWorkOrders.forEach((wo, index) => {
+          bidsMap[wo.id] = bidLists[index];
+        });
+        const relevant = tradeWorkOrders.filter(
+          (wo) =>
+            OPEN_STATUSES.includes(wo.status) ||
+            bidsMap[wo.id].some((bid) => bid.candidate?.vendor_id === session!.id),
         );
-        if (!isCancelled) setWorkOrders(open);
+        if (!isCancelled) {
+          setWorkOrders(relevant);
+          setBidsByWorkOrderId(bidsMap);
+        }
       } catch {
         if (!isCancelled) setError("Could not load the marketplace. Please try again.");
       } finally {
@@ -81,13 +101,46 @@ export default function VendorMarketplacePage() {
       render: (wo) => <StatusBadge status={wo.status} />,
     },
     {
+      key: "lowest_bid",
+      header: "Lowest bid",
+      render: (wo) => {
+        const lowestBid = getLowestActiveBid(bidsByWorkOrderId[wo.id] ?? []);
+        return lowestBid ? formatCents(lowestBid.amount_cents) : "No bids yet";
+      },
+    },
+    {
+      key: "leading_bidder",
+      header: "Leading bidder",
+      render: (wo) => {
+        const lowestBid = getLowestActiveBid(bidsByWorkOrderId[wo.id] ?? []);
+        if (!lowestBid) return "—";
+        return lowestBid.candidate?.vendor_id === session.id ? "You" : "Another vendor";
+      },
+    },
+    {
       key: "action",
       header: "",
-      render: (wo) => (
-        <Button variant="secondary" onClick={() => setBidWorkOrder(wo)}>
-          Place Bid
-        </Button>
-      ),
+      render: (wo) => {
+        if (wo.status === "awarded") {
+          return wo.selected_vendor_id === session.id ? (
+            <span className="text-sm font-medium text-tavi-indigo">Bid accepted</span>
+          ) : (
+            <span className="text-sm text-tavi-navy/50">Not selected</span>
+          );
+        }
+        if (!OPEN_STATUSES.includes(wo.status)) {
+          return <span className="text-sm text-tavi-navy/50">Bidding closed</span>;
+        }
+        const lowestBid = getLowestActiveBid(bidsByWorkOrderId[wo.id] ?? []);
+        const youHaveLowestBid = lowestBid?.candidate?.vendor_id === session.id;
+        return youHaveLowestBid ? (
+          <span className="text-sm text-tavi-navy/50">You have the lowest bid</span>
+        ) : (
+          <Button variant="secondary" onClick={() => setBidWorkOrder(wo)}>
+            Place Bid
+          </Button>
+        );
+      },
     },
   ];
 
@@ -100,8 +153,8 @@ export default function VendorMarketplacePage() {
         {error ? <ErrorState message={error} /> : null}
         {!isLoading && !error && workOrders.length === 0 ? (
           <EmptyState
-            title="No open work orders right now"
-            description={`There are no ${session.trade ?? ""} work orders open for bidding at the moment.`}
+            title="No work orders right now"
+            description={`There are no open ${session.trade ?? ""} work orders, and you haven't placed any bids yet.`}
           />
         ) : null}
         {!isLoading && !error && workOrders.length > 0 ? (
@@ -114,8 +167,9 @@ export default function VendorMarketplacePage() {
           <VendorPlaceBidForm
             workOrderId={bidWorkOrder.id}
             vendorId={session.id}
-            onSuccess={() => {
-              setWorkOrders((current) => current.filter((wo) => wo.id !== bidWorkOrder.id));
+            onSuccess={async () => {
+              const bids = await getWorkOrderBids(bidWorkOrder.id);
+              setBidsByWorkOrderId((current) => ({ ...current, [bidWorkOrder.id]: bids }));
               setBidWorkOrder(null);
             }}
           />

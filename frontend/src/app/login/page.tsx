@@ -58,6 +58,7 @@ export default function LoginPage() {
             placeholder="facility-manager-1"
             className="rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy focus:border-tavi-indigo focus:outline-none"
           />
+          <p className="text-xs text-tavi-navy/50">Demo tokens: {DEMO_TOKENS.join(", ")}</p>
         </FormField>
         {error ? <ErrorState message={error} /> : null}
         <Button type="submit" disabled={isSubmitting || !token.trim()}>
@@ -67,3 +68,13 @@ export default function LoginPage() {
     </div>
   );
 }
+
+const DEMO_TOKENS = [
+  "facility-manager-1",
+  "plumber-1",
+  "electrician-1",
+  "hvac-tech-1",
+  "cleaner-1",
+  "landscaper-1",
+  "maintenance-tech-1",
+];
