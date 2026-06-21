@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWorkOrder } from "../work-orders";
-import { getVendors } from "../vendors";
+import { contactVendor, getVendors } from "../vendors";
 import { contactWorkOrderCandidate } from "../candidates";
 import { createWorkOrderBid } from "../bids";
 import { getWorkOrderTimeline } from "../timeline";
@@ -40,6 +40,8 @@ describe("api client request building", () => {
       target_budget_cents: null,
       max_price_cents: null,
       bid_deadline_at: null,
+      required_arrival_window_start: null,
+      required_arrival_window_end: null,
       urgency: null,
       bidding_mode: null,
       selected_vendor_id: null,
@@ -67,13 +69,28 @@ describe("api client request building", () => {
     );
   });
 
-  it("posts to the candidate contact endpoint", async () => {
+  it("posts to the candidate contact endpoint with query params", async () => {
     const fetchMock = mockFetchOnce({});
 
-    await contactWorkOrderCandidate("cand_1", { channel: "email", message: "hi" });
+    await contactWorkOrderCandidate("cand_1", { channel: "email", body: "hi" });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/api/work-order-candidates/cand_1/contact",
+      "http://localhost:8000/api/work-order-candidates/cand_1/contact?channel=email&body=hi",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("posts to the vendor contact endpoint with query params", async () => {
+    const fetchMock = mockFetchOnce({});
+
+    await contactVendor("vendor_1", {
+      channel: "email",
+      work_order_id: "wo_1",
+      body: "hi",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/vendors/vendor_1/contact?channel=email&work_order_id=wo_1&body=hi",
       expect.objectContaining({ method: "POST" }),
     );
   });

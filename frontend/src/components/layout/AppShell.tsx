@@ -13,16 +13,16 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50">
-      <header className="border-b border-zinc-200 bg-white">
+    <div className="flex min-h-screen flex-col bg-tavi-pale-blue/40">
+      <header className="border-b border-tavi-navy/10 bg-white">
         <nav className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-4">
-          <span className="text-sm font-semibold text-zinc-900">Tavi</span>
+          <span className="text-sm font-semibold text-tavi-navy">Tavi</span>
           <ul className="flex gap-4">
             {navLinks.map((link) => (
               <li key={link.href}>
                 <Link
                   href={link.href}
-                  className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
+                  className="text-sm font-medium text-tavi-navy/70 hover:text-tavi-indigo"
                 >
                   {link.label}
                 </Link>

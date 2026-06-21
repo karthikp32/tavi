@@ -1,19 +1,23 @@
-import { apiFetch } from "./client";
-import type { WorkOrderCandidate } from "../types";
+import { apiFetch, buildQueryString } from "./client";
+import type { CommunicationEvent, WorkOrderCandidate } from "../types";
 
 export type UpdateCandidatePayload = Partial<
   Omit<WorkOrderCandidate, "id" | "work_order_id" | "vendor_id" | "created_at" | "updated_at">
 >;
 
 export interface ContactCandidatePayload {
-  channel: "email" | "sms" | "phone";
-  message?: string;
+  [key: string]: string | number | boolean | undefined;
+  channel: "email" | "sms" | "phone" | "chat" | "note";
+  body: string;
+  direction?: "inbound" | "outbound" | "internal";
+  actor_type?: string;
+  actor_name?: string;
 }
 
 export interface CreateCandidateMessagePayload {
-  channel: "email" | "sms" | "phone" | "chat" | "note";
-  direction: "inbound" | "outbound" | "internal";
+  [key: string]: string | number | boolean | undefined;
   body: string;
+  channel?: "email" | "sms" | "phone" | "chat" | "note";
 }
 
 export function getWorkOrderCandidates(workOrderId: string): Promise<WorkOrderCandidate[]> {
@@ -34,19 +38,22 @@ export function updateWorkOrderCandidate(
   });
 }
 
-export function contactWorkOrderCandidate(id: string, payload: ContactCandidatePayload) {
-  return apiFetch(`/api/work-order-candidates/${id}/contact`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+export function contactWorkOrderCandidate(
+  id: string,
+  payload: ContactCandidatePayload,
+): Promise<CommunicationEvent> {
+  return apiFetch<CommunicationEvent>(
+    `/api/work-order-candidates/${id}/contact${buildQueryString(payload)}`,
+    { method: "POST" },
+  );
 }
 
 export function createWorkOrderCandidateMessage(
   id: string,
   payload: CreateCandidateMessagePayload,
-) {
-  return apiFetch(`/api/work-order-candidates/${id}/messages`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+): Promise<CommunicationEvent> {
+  return apiFetch<CommunicationEvent>(
+    `/api/work-order-candidates/${id}/messages${buildQueryString(payload)}`,
+    { method: "POST" },
+  );
 }

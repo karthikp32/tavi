@@ -16,7 +16,7 @@ export function Table<T>({ columns, rows, getRowKey }: TableProps<T>) {
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
-        <tr className="border-b border-zinc-200 text-left text-zinc-500">
+        <tr className="border-b border-tavi-navy/10 text-left text-tavi-navy/60">
           {columns.map((column) => (
             <th key={column.key} className="px-3 py-2 font-medium">
               {column.header}
@@ -26,9 +26,9 @@ export function Table<T>({ columns, rows, getRowKey }: TableProps<T>) {
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={getRowKey(row)} className="border-b border-zinc-100">
+          <tr key={getRowKey(row)} className="border-b border-tavi-navy/5">
             {columns.map((column) => (
-              <td key={column.key} className="px-3 py-2 text-zinc-800">
+              <td key={column.key} className="px-3 py-2 text-tavi-navy">
                 {column.render(row)}
               </td>
             ))}

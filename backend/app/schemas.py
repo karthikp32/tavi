@@ -360,6 +360,8 @@ class WorkOrderBase(AppBaseModel):
     bid_deadline_at: Optional[datetime] = None
     urgency: Optional[str] = None
     bidding_mode: Optional[str] = None
+    required_arrival_window_start: Optional[datetime] = None
+    required_arrival_window_end: Optional[datetime] = None
     selected_vendor_id: Optional[str] = None
     accepted_bid_id: Optional[str] = None
     accepted_price_cents: Optional[int] = None
@@ -401,6 +403,16 @@ class WorkOrderCreate(WorkOrderBase):
             raise ValueError(f"Invalid confirmation_status. Must be one of {CONFIRMATION_STATUSES}")
         return v
 
+    @model_validator(mode="after")
+    def validate_arrival_window(self) -> "WorkOrderCreate":
+        if (
+            self.required_arrival_window_start is not None
+            and self.required_arrival_window_end is not None
+            and self.required_arrival_window_start > self.required_arrival_window_end
+        ):
+            raise ValueError("required_arrival_window_start must be before or equal to required_arrival_window_end")
+        return self
+
 class WorkOrderUpdate(AppBaseModel):
     user_id: Optional[str] = None
     company_id: Optional[str] = None
@@ -416,6 +428,8 @@ class WorkOrderUpdate(AppBaseModel):
     bid_deadline_at: Optional[datetime] = None
     urgency: Optional[str] = None
     bidding_mode: Optional[str] = None
+    required_arrival_window_start: Optional[datetime] = None
+    required_arrival_window_end: Optional[datetime] = None
     selected_vendor_id: Optional[str] = None
     accepted_bid_id: Optional[str] = None
     accepted_price_cents: Optional[int] = None
@@ -457,6 +471,16 @@ class WorkOrderUpdate(AppBaseModel):
         if v is not None and v not in CONFIRMATION_STATUSES:
             raise ValueError(f"Invalid confirmation_status. Must be one of {CONFIRMATION_STATUSES}")
         return v
+
+    @model_validator(mode="after")
+    def validate_arrival_window(self) -> "WorkOrderUpdate":
+        if (
+            self.required_arrival_window_start is not None
+            and self.required_arrival_window_end is not None
+            and self.required_arrival_window_start > self.required_arrival_window_end
+        ):
+            raise ValueError("required_arrival_window_start must be before or equal to required_arrival_window_end")
+        return self
 
 class WorkOrderOut(WorkOrderBase):
     id: str

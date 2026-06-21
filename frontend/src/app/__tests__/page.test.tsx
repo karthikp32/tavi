@@ -8,7 +8,7 @@ describe("HomePage", () => {
     expect(screen.getByRole("heading", { name: "Tavi" })).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText(
-        "Describe your work order and Tavi will finding matching vendors for your needs",
+        "Describe your work order and Tavi will find matching vendors for your needs",
       ),
     ).toBeInTheDocument();
   });
