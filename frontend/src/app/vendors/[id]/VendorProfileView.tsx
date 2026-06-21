@@ -4,14 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { getVendor, contactVendor } from "@/lib/api/vendors";
 import { getWorkOrderCandidates, contactWorkOrderCandidate } from "@/lib/api/candidates";
-import { getWorkOrders } from "@/lib/api/work-orders";
-import { NewWorkOrderForm } from "@/app/work-orders/new/NewWorkOrderForm";
+import { createWorkOrder, getWorkOrders } from "@/lib/api/work-orders";
+import { DEFAULT_USER_ID } from "@/lib/constants";
 import type { CommunicationEvent, Vendor, WorkOrder, WorkOrderCandidate } from "@/lib/types";
 
 interface VendorProfileViewProps {
@@ -30,9 +29,10 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
   const [error, setError] = useState<string | null>(null);
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string>(initialWorkOrderId ?? "");
+  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string>(
+    initialWorkOrderId ?? NEW_WORK_ORDER_VALUE,
+  );
   const [candidates, setCandidates] = useState<WorkOrderCandidate[]>([]);
-  const [isNewWorkOrderModalOpen, setIsNewWorkOrderModalOpen] = useState(false);
 
   const [messageBody, setMessageBody] = useState("");
   const [contactError, setContactError] = useState<string | null>(null);
@@ -49,29 +49,13 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
   }, [vendorId]);
 
   useEffect(() => {
-    getWorkOrders()
+    getWorkOrders({ vendor_id: vendorId })
       .then(setWorkOrders)
       .catch(() => setWorkOrders([]));
-  }, []);
-
-  function handleWorkOrderSelectChange(value: string) {
-    if (value === NEW_WORK_ORDER_VALUE) {
-      setIsNewWorkOrderModalOpen(true);
-      return;
-    }
-    setSelectedWorkOrderId(value);
-  }
-
-  async function handleNewWorkOrderSuccess(workOrderId: string) {
-    setIsNewWorkOrderModalOpen(false);
-    try {
-      setWorkOrders(await getWorkOrders());
-    } catch {}
-    setSelectedWorkOrderId(workOrderId);
-  }
+  }, [vendorId]);
 
   useEffect(() => {
-    if (!selectedWorkOrderId) {
+    if (!selectedWorkOrderId || selectedWorkOrderId === NEW_WORK_ORDER_VALUE) {
       setCandidates([]);
       return;
     }
@@ -95,10 +79,6 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
 
   async function handleContact(channel: "email" | "sms" | "phone") {
     if (!vendor) return;
-    if (!candidate && !selectedWorkOrderId) {
-      setContactError("Select a work order before contacting this vendor.");
-      return;
-    }
     if (!messageBody.trim()) {
       setContactError("Type a message before sending.");
       return;
@@ -107,11 +87,43 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
     setIsContacting(true);
     try {
       const body = messageBody.trim();
+      let workOrderId = selectedWorkOrderId;
+
+      if (workOrderId === NEW_WORK_ORDER_VALUE) {
+        const newWorkOrder = await createWorkOrder({
+          user_id: DEFAULT_USER_ID,
+          company_id: null,
+          facility_id: null,
+          status: "ready_for_vendor_discovery",
+          title: `${vendor.trade} – ${vendor.name}`,
+          description: body,
+          trade: vendor.trade,
+          task_type: null,
+          requested_start_at: new Date().toISOString(),
+          target_budget_cents: null,
+          max_price_cents: null,
+          bid_deadline_at: null,
+          urgency: null,
+          bidding_mode: null,
+          required_arrival_window_start: null,
+          required_arrival_window_end: null,
+          selected_vendor_id: null,
+          accepted_bid_id: null,
+          accepted_price_cents: null,
+          scheduled_start_at: null,
+          confirmation_status: null,
+          completed_vendor_quality_score: null,
+        });
+        workOrderId = newWorkOrder.id;
+        setWorkOrders((previous) => [...previous, newWorkOrder]);
+        setSelectedWorkOrderId(newWorkOrder.id);
+      }
+
       const event = candidate
         ? await contactWorkOrderCandidate(candidate.id, { channel, body })
         : await contactVendor(vendor.id, {
             channel,
-            work_order_id: selectedWorkOrderId,
+            work_order_id: workOrderId,
             body,
           });
       setLastEvent(event);
@@ -193,16 +205,15 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
             <select
               id="work_order_select"
               value={selectedWorkOrderId}
-              onChange={(event) => handleWorkOrderSelectChange(event.target.value)}
+              onChange={(event) => setSelectedWorkOrderId(event.target.value)}
               className={selectClassName}
             >
-              <option value="">No work order selected</option>
               {workOrders.map((workOrder) => (
                 <option key={workOrder.id} value={workOrder.id}>
                   {workOrder.title}
                 </option>
               ))}
-              <option value={NEW_WORK_ORDER_VALUE}>+ New work order…</option>
+              <option value={NEW_WORK_ORDER_VALUE}>New Work Order</option>
             </select>
 
             {candidate ? (
@@ -258,12 +269,6 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
             ) : null}
           </div>
         </Card>
-
-        {isNewWorkOrderModalOpen ? (
-          <Modal title="New Work Order" onClose={() => setIsNewWorkOrderModalOpen(false)}>
-            <NewWorkOrderForm onSuccess={handleNewWorkOrderSuccess} />
-          </Modal>
-        ) : null}
       </div>
     </AppShell>
   );

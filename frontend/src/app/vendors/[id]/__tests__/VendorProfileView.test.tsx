@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { VendorProfileView } from "../VendorProfileView";
 import { getVendor, contactVendor } from "@/lib/api/vendors";
-import { getWorkOrders } from "@/lib/api/work-orders";
+import { createWorkOrder, getWorkOrders } from "@/lib/api/work-orders";
 import { getWorkOrderCandidates } from "@/lib/api/candidates";
 
 vi.mock("@/lib/api/vendors", () => ({
@@ -12,6 +12,7 @@ vi.mock("@/lib/api/vendors", () => ({
 
 vi.mock("@/lib/api/work-orders", () => ({
   getWorkOrders: vi.fn(),
+  createWorkOrder: vi.fn(),
 }));
 
 vi.mock("@/lib/api/candidates", () => ({
@@ -58,7 +59,7 @@ describe("VendorProfileView", () => {
     expect(screen.getByText(/4.5/)).toBeInTheDocument();
   });
 
-  it("requires a work order to be selected before contacting a vendor directly", async () => {
+  it("requires a message before contacting a vendor directly", async () => {
     vi.mocked(getVendor).mockResolvedValue(vendor);
     vi.mocked(getWorkOrders).mockResolvedValue([]);
 
@@ -67,10 +68,77 @@ describe("VendorProfileView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /send email/i }));
 
-    expect(
-      await screen.findByText(/select a work order before contacting this vendor/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/type a message before sending/i)).toBeInTheDocument();
     expect(contactVendor).not.toHaveBeenCalled();
+    expect(createWorkOrder).not.toHaveBeenCalled();
+  });
+
+  it("creates a new work order from the message when 'New Work Order' is selected", async () => {
+    vi.mocked(getVendor).mockResolvedValue(vendor);
+    vi.mocked(getWorkOrders).mockResolvedValue([]);
+    vi.mocked(getWorkOrderCandidates).mockResolvedValue([]);
+    vi.mocked(createWorkOrder).mockResolvedValue({
+      id: "wo_new",
+      user_id: "user_1",
+      company_id: null,
+      facility_id: null,
+      title: "Plumbing – Acme Plumbing",
+      description: "Need a quote for a leak.",
+      trade: "Plumbing",
+      task_type: null,
+      status: "ready_for_vendor_discovery",
+      requested_start_at: "2026-01-01T00:00:00Z",
+      target_budget_cents: null,
+      max_price_cents: null,
+      bid_deadline_at: null,
+      urgency: null,
+      bidding_mode: null,
+      required_arrival_window_start: null,
+      required_arrival_window_end: null,
+      selected_vendor_id: null,
+      accepted_bid_id: null,
+      accepted_price_cents: null,
+      scheduled_start_at: null,
+      confirmation_status: null,
+      completed_vendor_quality_score: null,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    vi.mocked(contactVendor).mockResolvedValue({
+      id: "event_1",
+      work_order_id: "wo_new",
+      work_order_candidate_id: null,
+      channel: "email",
+      direction: "outbound",
+      actor_type: "human",
+      actor_name: "Facility Manager",
+      body: "Need a quote for a leak.",
+      metadata: null,
+      created_at: "2026-01-01T00:00:00Z",
+    });
+
+    render(<VendorProfileView vendorId="vendor_1" />);
+    await screen.findByRole("heading", { name: "Acme Plumbing" });
+
+    expect(screen.getByLabelText("Work order context")).toHaveValue("__new__");
+
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Need a quote for a leak." },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /send email/i }));
+
+    await waitFor(() => {
+      expect(createWorkOrder).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(contactVendor).toHaveBeenCalledWith("vendor_1", {
+        channel: "email",
+        work_order_id: "wo_new",
+        body: "Need a quote for a leak.",
+      });
+    });
   });
 
   it("sends a contact request and renders the resulting communication event", async () => {
