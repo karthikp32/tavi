@@ -618,6 +618,18 @@ class ChatSessionOut(ChatSessionBase):
     updated_at: datetime
     messages: List[ChatMessageOut] = []
 
+# ----------------- Auth Schemas -----------------
+
+class LoginRequest(AppBaseModel):
+    token: str
+
+class LoginResponse(AppBaseModel):
+    id: str
+    type: str
+    name: str
+    trade: Optional[str] = None
+    company_id: Optional[str] = None
+
 # ----------------- LLM Schemas -----------------
 
 class LlmMessageRequest(AppBaseModel):

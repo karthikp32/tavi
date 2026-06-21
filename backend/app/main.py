@@ -33,6 +33,7 @@ def initialize_database():
     Base.metadata.create_all(bind=engine)
     migrate_schema()
     ensure_communication_event_sender_columns()
+    ensure_login_token_columns()
     with SessionLocal() as startup_db:
         ensure_seed_db(startup_db)
 
@@ -54,6 +55,17 @@ def ensure_communication_event_sender_columns():
     with engine.begin() as connection:
         for column in columns_to_add:
             connection.execute(text(f"ALTER TABLE communication_events ADD COLUMN {column} VARCHAR"))
+
+def ensure_login_token_columns():
+    inspector = inspect(engine)
+    for table in ("users", "vendors"):
+        if not inspector.has_table(table):
+            continue
+        existing_columns = {column["name"] for column in inspector.get_columns(table)}
+        if "login_token" in existing_columns:
+            continue
+        with engine.begin() as connection:
+            connection.execute(text(f"ALTER TABLE {table} ADD COLUMN login_token VARCHAR"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -81,6 +93,24 @@ def seed_database(db: Session = Depends(get_db)):
         return {"message": "Database seeded successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+# ----------------- Auth Endpoints -----------------
+
+@app.post("/api/auth/login", response_model=schemas.LoginResponse)
+def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.login_token == payload.token).first()
+    if user:
+        return schemas.LoginResponse(
+            id=user.id, type=user.user_type, name=user.name, trade=user.trade, company_id=user.company_id
+        )
+
+    vendor = db.query(models.Vendor).filter(models.Vendor.login_token == payload.token).first()
+    if vendor:
+        return schemas.LoginResponse(
+            id=vendor.id, type="vendor", name=vendor.name, trade=vendor.trade, company_id=vendor.company_id
+        )
+
+    raise HTTPException(status_code=401, detail="Invalid token")
 
 # ----------------- Helper Functions -----------------
 

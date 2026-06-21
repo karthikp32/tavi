@@ -28,6 +28,16 @@ export function getWorkOrderCandidate(id: string): Promise<WorkOrderCandidate> {
   return apiFetch<WorkOrderCandidate>(`/api/work-order-candidates/${id}`);
 }
 
+export function createWorkOrderCandidate(
+  workOrderId: string,
+  vendorId: string,
+): Promise<WorkOrderCandidate> {
+  return apiFetch<WorkOrderCandidate>(
+    `/api/work-orders/${workOrderId}/candidates${buildQueryString({ vendor_id: vendorId })}`,
+    { method: "POST" },
+  );
+}
+
 export function updateWorkOrderCandidate(
   id: string,
   payload: UpdateCandidatePayload,
