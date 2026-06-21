@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { ChatInput } from "../ChatInput";
 import { sendLlmMessage } from "../../../lib/api/llm";
 
@@ -9,6 +9,7 @@ vi.mock("../../../lib/api/llm", () => ({
 
 afterEach(() => {
   vi.resetAllMocks();
+  vi.useRealTimers();
   cleanup();
 });
 
@@ -226,6 +227,26 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByRole("button", { name: /stop/i }));
 
     expect(signal?.aborted).toBe(true);
+  });
+
+  it("shows elapsed thinking time while waiting for the assistant response", () => {
+    vi.useFakeTimers();
+    vi.mocked(sendLlmMessage).mockImplementation(() => new Promise(() => {}));
+
+    render(<ChatInput />);
+
+    fireEvent.change(screen.getByPlaceholderText(/describe your work order/i), {
+      target: { value: "Fix a leaking sink" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(screen.getByText("Tavi Agent is thinking… 1s")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(screen.getByText("Tavi Agent is thinking… 2s")).toBeInTheDocument();
   });
 
   it("shows an error state when the request fails", async () => {

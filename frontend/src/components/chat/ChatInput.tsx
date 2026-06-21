@@ -35,6 +35,7 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
   const [chatSessionId, setChatSessionId] = useState<string | undefined>(chatSession?.id);
   const [workOrderId, setWorkOrderId] = useState<string | null>(chatSession?.work_order_id ?? null);
   const [isLoading, setIsLoading] = useState(false);
+  const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -43,6 +44,20 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
       abortControllerRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setThinkingSeconds(0);
+      return;
+    }
+
+    setThinkingSeconds(1);
+    const intervalId = window.setInterval(() => {
+      setThinkingSeconds((seconds) => seconds + 1);
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isLoading]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,6 +111,8 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
     }
   }
 
+  const displayedThinkingSeconds = Math.max(thinkingSeconds, 1);
+
   return (
     <div className="flex w-full max-w-2xl flex-col gap-4">
       {messages.length > 0 ? (
@@ -128,7 +145,11 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
         </p>
       ) : null}
 
-      {isLoading ? <p className="text-sm text-tavi-navy/50">Tavi is thinking…</p> : null}
+      {isLoading ? (
+        <p className="text-sm text-tavi-navy/50">
+          Tavi Agent is thinking… {displayedThinkingSeconds}s
+        </p>
+      ) : null}
       {error ? <ErrorState message={error} /> : null}
 
       <form className="flex w-full flex-col gap-3" onSubmit={handleSubmit}>
