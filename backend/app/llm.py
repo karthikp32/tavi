@@ -302,19 +302,18 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "contact_vendor",
-            "description": "Log an outbound communication event to a vendor for a work order, creating a candidate link if not exists.",
+            "description": "Simulate sending an email to a vendor for a work order, creating a candidate link if it does not exist. Use this for generic requests like 'contact this vendor' or 'contact both vendors'.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "vendor_id": {"type": "string"},
                     "work_order_id": {"type": "string"},
-                    "channel": {"type": "string", "enum": ["email", "sms", "phone"]},
                     "body": {
                         "type": "string",
-                        "description": "The message text sent to the vendor.",
+                        "description": "The simulated email body sent to the vendor.",
                     },
                 },
-                "required": ["vendor_id", "work_order_id", "channel", "body"],
+                "required": ["vendor_id", "work_order_id", "body"],
             },
         },
     },
@@ -456,7 +455,8 @@ def serialize_model(obj) -> Dict[str, Any]:
         return {}
     res = {}
     for col in obj.__table__.columns:
-        val = getattr(obj, col.name)
+        attr_name = obj.__mapper__.get_property_by_column(col).key
+        val = getattr(obj, attr_name)
         if isinstance(val, datetime):
             res[col.name] = val.isoformat()
         elif isinstance(val, Decimal):
@@ -803,7 +803,12 @@ def tool_create_work_order_candidate(
 
 
 def tool_contact_vendor(
-    db: Session, vendor_id: str, work_order_id: str, channel: str, body: str, **kwargs
+    db: Session,
+    vendor_id: str,
+    work_order_id: str,
+    body: str,
+    channel: str = "email",
+    **kwargs,
 ) -> Dict[str, Any]:
     candidate = (
         db.query(models.WorkOrderCandidate)
@@ -824,28 +829,8 @@ def tool_contact_vendor(
         db.add(candidate)
         db.commit()
         db.refresh(candidate)
-    else:
-        candidate.status = "contacted"
-        candidate.last_contacted_at = datetime.utcnow()
-        candidate.next_action = "awaiting response"
-        db.commit()
 
-    event = models.CommunicationEvent(
-        work_order_id=work_order_id,
-        work_order_candidate_id=candidate.id,
-        channel=channel,
-        direction="outbound",
-        actor_type="agent",
-        actor_name="Tavi Agent",
-        sender_id=kwargs.get("sender_id"),
-        sender_type=kwargs.get("sender_type", "agent"),
-        body=body,
-        created_at=datetime.utcnow(),
-    )
-    db.add(event)
-    db.commit()
-    db.refresh(event)
-    return serialize_model(event)
+    return _send_outbound_communication(db, candidate.id, channel, body, **kwargs)
 
 
 def _send_outbound_communication(

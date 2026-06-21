@@ -252,6 +252,78 @@ def test_contact_tools_side_effects(db_session):
     assert event.body == "Hi vendor, can you look at this email?"
     assert event.sender_type == "agent"
 
+def test_contact_tool_result_is_json_serializable(db_session):
+    user = db_session.query(models.User).first()
+    facility = db_session.query(models.Facility).filter(models.Facility.user_id == user.id).first()
+    vendor = db_session.query(models.Vendor).first()
+
+    wo = models.WorkOrder(
+        user_id=user.id,
+        facility_id=facility.id,
+        title="Contact serialization test",
+        description="Testing contact tool serialization",
+        trade=vendor.trade,
+        status="contacting_vendors",
+    )
+    db_session.add(wo)
+    db_session.commit()
+
+    res = llm.execute_tool(
+        db_session,
+        "contact_vendor",
+        {
+            "vendor_id": vendor.id,
+            "work_order_id": wo.id,
+            "channel": "email",
+            "body": "Can you quote this job?",
+        },
+    )
+
+    assert res["metadata"] is None
+    json.dumps(res)
+
+def test_contact_vendor_simulates_email_outreach_for_new_candidate(db_session):
+    user = db_session.query(models.User).first()
+    facility = db_session.query(models.Facility).filter(models.Facility.user_id == user.id).first()
+    vendor = db_session.query(models.Vendor).first()
+
+    wo = models.WorkOrder(
+        user_id=user.id,
+        facility_id=facility.id,
+        title="Contact vendor simulation test",
+        description="Testing simulated contact vendor outreach",
+        trade=vendor.trade,
+        status="contacting_vendors",
+    )
+    db_session.add(wo)
+    db_session.commit()
+
+    res = llm.execute_tool(
+        db_session,
+        "contact_vendor",
+        {
+            "vendor_id": vendor.id,
+            "work_order_id": wo.id,
+            "body": "Can you quote this job?",
+        },
+    )
+
+    candidate = db_session.query(models.WorkOrderCandidate).filter(
+        models.WorkOrderCandidate.work_order_id == wo.id,
+        models.WorkOrderCandidate.vendor_id == vendor.id,
+    ).one()
+    events = db_session.query(models.CommunicationEvent).filter(
+        models.CommunicationEvent.work_order_candidate_id == candidate.id
+    ).all()
+
+    assert res["work_order_candidate_id"] == candidate.id
+    assert res["channel"] == "email"
+    assert candidate.status == "contacted"
+    assert candidate.last_contacted_at is not None
+    assert candidate.next_action == "awaiting response"
+    assert len(events) == 1
+    assert events[0].body == "Can you quote this job?"
+
 def test_create_bid_tool_rejects_candidate_from_other_work_order(db_session):
     user = db_session.query(models.User).first()
     facility = db_session.query(models.Facility).filter(models.Facility.user_id == user.id).first()
