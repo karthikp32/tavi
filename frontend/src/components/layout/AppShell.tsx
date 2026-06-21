@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 const navLinks = [
@@ -11,6 +14,8 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const pathname = usePathname();
+
   return (
     <div className="flex min-h-screen flex-col bg-tavi-pale-blue/40">
       <header className="border-b border-tavi-navy/10 bg-white">
@@ -19,16 +24,25 @@ export function AppShell({ children }: AppShellProps) {
             Tavi
           </Link>
           <ul className="flex gap-4">
-            {navLinks.map((link) => (
-              <li key={link.href}>
-                <Link
-                  href={link.href}
-                  className="text-sm font-medium text-tavi-navy/70 hover:text-tavi-indigo"
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
+            {navLinks.map((link) => {
+              const isActive =
+                pathname === link.href || pathname?.startsWith(`${link.href}/`);
+              return (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    aria-current={isActive ? "page" : undefined}
+                    className={
+                      isActive
+                        ? "text-sm font-medium text-tavi-indigo"
+                        : "text-sm font-medium text-tavi-navy/70 hover:text-tavi-indigo"
+                    }
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
       </header>

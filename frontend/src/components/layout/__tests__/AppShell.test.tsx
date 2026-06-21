@@ -1,9 +1,21 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { usePathname } from "next/navigation";
 import { AppShell } from "../AppShell";
+
+vi.mock("next/navigation", () => ({
+  usePathname: vi.fn(),
+}));
+
+afterEach(() => {
+  vi.clearAllMocks();
+  cleanup();
+});
 
 describe("AppShell", () => {
   it("renders the main navigation links and children", () => {
+    vi.mocked(usePathname).mockReturnValue("/");
+
     render(
       <AppShell>
         <p>Page content</p>
@@ -17,5 +29,21 @@ describe("AppShell", () => {
     );
     expect(screen.getByRole("link", { name: "Vendors" })).toHaveAttribute("href", "/vendors");
     expect(screen.getByText("Page content")).toBeInTheDocument();
+  });
+
+  it("highlights the nav link matching the current path", () => {
+    vi.mocked(usePathname).mockReturnValue("/work-orders/wo_1");
+
+    render(
+      <AppShell>
+        <p>Page content</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole("link", { name: "Work Orders" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("link", { name: "Vendors" })).not.toHaveAttribute("aria-current");
   });
 });
