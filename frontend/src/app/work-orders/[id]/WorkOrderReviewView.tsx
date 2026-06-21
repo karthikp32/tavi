@@ -27,12 +27,18 @@ function formatCents(cents: number | null): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function describeTimelineEntry(entry: TimelineEntry): string {
+function describeTimelineEntry(entry: TimelineEntry, vendorsById: Record<string, Vendor>): string {
   if (entry.type === "communication_event") {
     return `${entry.data.channel} (${entry.data.direction}): ${entry.data.body}`;
   }
   if (entry.type === "bid") {
     return `Bid submitted for ${formatCents(entry.data.amount_cents)}`;
+  }
+  if (entry.data.status === "awarded") {
+    const vendorName = entry.data.selected_vendor_id
+      ? vendorsById[entry.data.selected_vendor_id]?.name ?? "vendor"
+      : "vendor";
+    return `Awarded to ${vendorName} for ${formatCents(entry.data.accepted_price_cents)}`;
   }
   return `Status changed to ${entry.data.status}`;
 }
@@ -254,7 +260,7 @@ export function WorkOrderReviewView({ workOrderId }: WorkOrderReviewViewProps) {
                       <p className="text-xs text-tavi-navy/50">
                         {new Date(entry.timestamp).toLocaleString()}
                       </p>
-                      <p>{describeTimelineEntry(entry)}</p>
+                      <p>{describeTimelineEntry(entry, vendorsById)}</p>
                     </li>
                   ))}
                 </ul>
