@@ -54,35 +54,35 @@ def seed_db(db: Session):
     db.add(fm_company)
 
     vendor_companies = []
-    cities = ["New York", "Los Angeles", "Chicago"]
     trades = ["Plumbing", "Electrical", "HVAC", "Cleaning", "Lawncare", "General maintenance"]
+    city_cycle = ["New York", "Los Angeles", "Chicago", "New York", "Los Angeles"]
+    city_details = {
+        "New York": ("NY", "10002", Decimal("40.75"), Decimal("-73.98")),
+        "Los Angeles": ("CA", "90001", Decimal("34.05"), Decimal("-118.24")),
+        "Chicago": ("IL", "60601", Decimal("41.88"), Decimal("-87.63")),
+    }
 
-    for idx, (city, trade) in enumerate([
-        ("New York", "Plumbing"),
-        ("New York", "Electrical"),
-        ("New York", "HVAC"),
-        ("New York", "Cleaning"),
-        ("Los Angeles", "Plumbing"),
-        ("Los Angeles", "Electrical"),
-        ("Los Angeles", "Lawncare"),
-        ("Chicago", "Plumbing"),
-        ("Chicago", "HVAC"),
-        ("Chicago", "General maintenance"),
-    ]):
-        vc = Company(
-            id=str(uuid.uuid4()),
-            name=f"{city} {trade} Pros Inc.",
-            company_type="vendor",
-            trade=trade,
-            phone=f"555-020{idx}",
-            email=f"contact@{city.lower().replace(' ', '')}{trade.lower()}pros.com",
-            address=f"{200 + idx} Broadway",
-            city=city,
-            state="NY" if city == "New York" else ("CA" if city == "Los Angeles" else "IL"),
-            postal_code="10002" if city == "New York" else ("90001" if city == "Los Angeles" else "60601"),
-        )
-        db.add(vc)
-        vendor_companies.append((vc, city, trade))
+    vendor_idx = 0
+    for trade in trades:
+        for city in city_cycle:
+            state, postal_code, _, _ = city_details[city]
+            vendor_idx += 1
+            name = f"{city} {trade} Team {city_cycle.index(city) + 1}-{vendor_idx}"
+            slug = "".join(ch for ch in name.lower() if ch.isalnum())
+            vc = Company(
+                id=str(uuid.uuid4()),
+                name=f"{name} Inc.",
+                company_type="vendor",
+                trade=trade,
+                phone=f"555-02{vendor_idx:02d}",
+                email=f"contact@{slug}.com",
+                address=f"{200 + vendor_idx} Broadway",
+                city=city,
+                state=state,
+                postal_code=postal_code,
+            )
+            db.add(vc)
+            vendor_companies.append((vc, city, trade, vendor_idx))
     db.commit()
 
     # 2. Users
@@ -122,13 +122,13 @@ def seed_db(db: Session):
 
     # 4. Vendors
     vendors = []
-    for vc, city, trade in vendor_companies:
-        # Quality score, availability score, risk score
-        # High quality, low risk for first, then normal
-        rating = Decimal("4.8") if "Pros" in vc.name else Decimal("4.2")
-        quality = Decimal("0.90")
-        availability = Decimal("0.85")
-        risk = Decimal("0.05")
+    license_statuses = ["verified", "not_required", "verified", "unverified", "expired"]
+    insurance_statuses = ["verified", "verified", "not_required", "unverified", "expired"]
+    for vc, city, trade, idx in vendor_companies:
+        _, _, latitude, longitude = city_details[city]
+        quality = Decimal("0.90") - Decimal(idx % 5) * Decimal("0.03")
+        availability = Decimal("0.85") - Decimal(idx % 4) * Decimal("0.04")
+        risk = Decimal("0.05") + Decimal(idx % 3) * Decimal("0.04")
 
         vendor = Vendor(
             id=str(uuid.uuid4()),
@@ -139,12 +139,12 @@ def seed_db(db: Session):
             email=vc.email,
             address=vc.address,
             city=city,
-            latitude=Decimal("40.75") if city == "New York" else (Decimal("34.05") if city == "Los Angeles" else Decimal("41.88")),
-            longitude=Decimal("-73.98") if city == "New York" else (Decimal("-118.24") if city == "Los Angeles" else Decimal("-87.63")),
-            rating=rating,
-            review_count=15,
-            license_status="verified",
-            insurance_status="verified",
+            latitude=latitude,
+            longitude=longitude,
+            rating=Decimal("4.8") - Decimal(idx % 4) * Decimal("0.1"),
+            review_count=15 + idx,
+            license_status=license_statuses[idx % len(license_statuses)],
+            insurance_status=insurance_statuses[idx % len(insurance_statuses)],
             quality_score=quality,
             availability_score=availability,
             risk_score=risk,
@@ -193,6 +193,57 @@ def seed_db(db: Session):
                 notes=f"Available for {trade} work in {city}",
             )
             db.add(block)
+
+    db.commit()
+
+    # 6. Seed starter work orders for the dashboard
+    work_order_specs = [
+        ("Leaking pipe under kitchen sink", "Tenant reports a slow leak under the 4th floor breakroom sink.", "Plumbing", "leak_repair", "collecting_bids", 25000, 40000, "high", facilities[0]),
+        ("Replace lobby light fixtures", "Several lobby fixtures are flickering and need replacement.", "Electrical", "repair", "ready_for_vendor_discovery", 30000, 55000, "normal", facilities[0]),
+        ("AC not cooling west conference room", "Conference room AC is running warm during afternoon meetings.", "HVAC", "repair", "contacting_vendors", 45000, 75000, "high", facilities[1]),
+        ("Nightly janitorial deep clean", "Schedule a one-time deep clean before the client walkthrough.", "Cleaning", "maintenance", "draft", 20000, 35000, "normal", facilities[0]),
+        ("Landscape irrigation tune-up", "Sprinkler coverage is uneven around the LA office entrance.", "Lawncare", "maintenance", "discovering_vendors", 18000, 32000, "low", facilities[1]),
+        ("Patch drywall in loading area", "Repair scuffed and dented drywall near the loading dock.", "General maintenance", "repair", "vendors_shortlisted", 22000, 38000, "normal", facilities[2]),
+        ("Backflow preventer inspection", "Annual inspection and documentation for plumbing backflow prevention.", "Plumbing", "maintenance", "ready_for_vendor_discovery", 28000, 45000, "normal", facilities[2]),
+        ("Panel label audit", "Audit and relabel electrical panels after recent tenant move-in.", "Electrical", "maintenance", "draft", 16000, 30000, "low", facilities[2]),
+        ("Replace rooftop filter bank", "Replace HVAC filters and inspect rooftop unit airflow.", "HVAC", "maintenance", "collecting_bids", 36000, 60000, "normal", facilities[1]),
+        ("Post-event floor cleaning", "Clean and buff event space floors after weekend event.", "Cleaning", "maintenance", "contacting_vendors", 24000, 42000, "high", facilities[0]),
+    ]
+    for idx, (title, description, trade, task_type, status, target_budget, max_price, urgency, facility) in enumerate(work_order_specs):
+        work_order = WorkOrder(
+            id=str(uuid.uuid4()),
+            user_id=fm_user.id,
+            company_id=fm_company.id,
+            facility_id=facility.id,
+            title=title,
+            description=description,
+            trade=trade,
+            task_type=task_type,
+            status=status,
+            requested_start_at=now + timedelta(days=idx + 1),
+            target_budget_cents=target_budget,
+            max_price_cents=max_price,
+            bid_deadline_at=now + timedelta(days=idx + 2),
+            urgency=urgency,
+            bidding_mode="private_negotiation",
+            required_arrival_window_start=now + timedelta(days=idx + 3, hours=9),
+            required_arrival_window_end=now + timedelta(days=idx + 3, hours=17),
+        )
+        db.add(work_order)
+        db.flush()
+        db.add(WorkOrderState(
+            work_order_id=work_order.id,
+            status=work_order.status,
+            title=work_order.title,
+            description=work_order.description,
+            trade=work_order.trade,
+            task_type=work_order.task_type,
+            target_budget_cents=work_order.target_budget_cents,
+            max_price_cents=work_order.max_price_cents,
+            actor_type="system",
+            actor_name="Seed Data",
+            created_at=now,
+        ))
 
     db.commit()
     print("Database successfully seeded.")

@@ -60,12 +60,32 @@ def test_schema_creation_and_seeding(client):
     # Verify we have seeded users and companies
     response = client.get("/api/work-orders")
     assert response.status_code == 200
+    work_orders = response.json()
+    assert len(work_orders) == 10
     
     # We can also check vendors are seeded
     response = client.get("/api/vendors")
     assert response.status_code == 200
     vendors = response.json()
     assert len(vendors) > 0
+
+    trades = {"Plumbing", "Electrical", "HVAC", "Cleaning", "Lawncare", "General maintenance"}
+    for trade in trades:
+        trade_vendors = [vendor for vendor in vendors if vendor["trade"] == trade]
+        assert len(trade_vendors) == 5
+        assert {vendor["city"] for vendor in trade_vendors} == {
+            "New York",
+            "Los Angeles",
+            "Chicago",
+        }
+
+    assert len({vendor["quality_score"] for vendor in vendors}) > 1
+    assert len({vendor["availability_score"] for vendor in vendors}) > 1
+    assert len({vendor["risk_score"] for vendor in vendors}) > 1
+    assert len({vendor["license_status"] for vendor in vendors}) > 1
+    assert len({vendor["insurance_status"] for vendor in vendors}) > 1
+    assert all(vendor["license_status"] for vendor in vendors)
+    assert all(vendor["insurance_status"] for vendor in vendors)
 
 def test_ensure_seed_db_seeds_empty_sqlite_once(tmp_path):
     db_path = tmp_path / "auto_seed.db"
