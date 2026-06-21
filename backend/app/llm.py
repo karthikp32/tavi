@@ -598,11 +598,18 @@ def tool_update_work_order(
         "completed_vendor_quality_score",
     }
 
+    datetime_fields = {
+        "requested_start_at",
+        "bid_deadline_at",
+        "required_arrival_window_start",
+        "required_arrival_window_end",
+        "scheduled_start_at",
+    }
+
     changed = False
     for key, val in updates.items():
-        if key == "scheduled_start_at" and val:
-            if isinstance(val, str):
-                val = datetime.fromisoformat(val.replace("Z", ""))
+        if key in datetime_fields and isinstance(val, str):
+            val = datetime.fromisoformat(val.replace("Z", ""))
         if key in important_fields:
             curr = getattr(wo, key)
             if curr != val:
