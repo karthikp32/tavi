@@ -93,6 +93,7 @@ def seed_db(db: Session):
         email="karthik@tavi.com",
         user_type="facility_manager",
         company_name="Apex Property Management",
+        login_token="facility-manager-1",
     )
     db.add(fm_user)
     db.commit()
@@ -124,11 +125,20 @@ def seed_db(db: Session):
     vendors = []
     license_statuses = ["verified", "not_required", "verified", "unverified", "expired"]
     insurance_statuses = ["verified", "verified", "not_required", "unverified", "expired"]
+    trade_login_slugs = {
+        "Plumbing": "plumber",
+        "Electrical": "electrician",
+        "HVAC": "hvac-tech",
+        "Cleaning": "cleaner",
+        "Lawncare": "landscaper",
+        "General maintenance": "maintenance-tech",
+    }
     for vc, city, trade, idx in vendor_companies:
         _, _, latitude, longitude = city_details[city]
         quality = Decimal("0.90") - Decimal(idx % 5) * Decimal("0.03")
         availability = Decimal("0.85") - Decimal(idx % 4) * Decimal("0.04")
         risk = Decimal("0.05") + Decimal(idx % 3) * Decimal("0.04")
+        trade_position = ((idx - 1) % len(city_cycle)) + 1
 
         vendor = Vendor(
             id=str(uuid.uuid4()),
@@ -149,6 +159,7 @@ def seed_db(db: Session):
             availability_score=availability,
             risk_score=risk,
             score_evidence={"license_verified_at": "2026-01-01", "insurance_verified_at": "2026-01-01"},
+            login_token=f"{trade_login_slugs[trade]}-{trade_position}",
         )
         db.add(vendor)
         vendors.append((vendor, city, trade))
