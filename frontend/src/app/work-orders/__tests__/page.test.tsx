@@ -8,6 +8,7 @@ import { getWorkOrderBids } from "@/lib/api/bids";
 const pushMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/work-orders",
   useRouter: () => ({ push: pushMock }),
 }));
 

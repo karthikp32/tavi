@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import NewWorkOrderPage from "../page";
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/work-orders/new",
   useRouter: () => ({ push: vi.fn() }),
 }));
 
