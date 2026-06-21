@@ -9,8 +9,11 @@ export type CreateWorkOrderPayload = Omit<
 
 export type UpdateWorkOrderPayload = Partial<Omit<WorkOrder, "id" | "created_at" | "updated_at">>;
 
-export function getWorkOrders(): Promise<WorkOrder[]> {
-  return apiFetch<WorkOrder[]>("/api/work-orders");
+export function getWorkOrders(filters: { vendor_id?: string } = {}): Promise<WorkOrder[]> {
+  const params = new URLSearchParams();
+  if (filters.vendor_id) params.set("vendor_id", filters.vendor_id);
+  const query = params.toString();
+  return apiFetch<WorkOrder[]>(`/api/work-orders${query ? `?${query}` : ""}`);
 }
 
 export function getWorkOrder(id: string): Promise<WorkOrder> {

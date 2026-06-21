@@ -253,8 +253,14 @@ def create_work_order(wo_in: schemas.WorkOrderCreate, db: Session = Depends(get_
     return db_wo
 
 @app.get("/api/work-orders", response_model=List[schemas.WorkOrderOut])
-def list_work_orders(db: Session = Depends(get_db)):
-    return db.query(models.WorkOrder).all()
+def list_work_orders(vendor_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    query = db.query(models.WorkOrder)
+    if vendor_id:
+        query = query.join(
+            models.WorkOrderCandidate,
+            models.WorkOrderCandidate.work_order_id == models.WorkOrder.id,
+        ).filter(models.WorkOrderCandidate.vendor_id == vendor_id)
+    return query.all()
 
 @app.get("/api/work-orders/{id}", response_model=schemas.WorkOrderOut)
 def get_work_order(id: str, db: Session = Depends(get_db)):
