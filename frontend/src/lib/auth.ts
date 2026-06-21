@@ -33,6 +33,7 @@ export function clearSession(): void {
   document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; samesite=lax${secure}`;
 }
 
-export function homePathForSession(session: Session): string {
-  return session.type === "vendor" ? "/vendor/marketplace" : "/";
+export function homePathForSession(_session: Session): string {
+  void _session;
+  return "/tavi";
 }

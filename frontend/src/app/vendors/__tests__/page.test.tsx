@@ -7,6 +7,11 @@ vi.mock("@/lib/api/vendors", () => ({
   getVendors: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/vendors",
+  useRouter: () => ({ replace: vi.fn() }),
+}));
+
 afterEach(() => {
   vi.clearAllMocks();
   cleanup();

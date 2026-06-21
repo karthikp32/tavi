@@ -9,6 +9,11 @@ vi.mock("@/lib/api/facilities", () => ({
   getFacilities: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/facilities",
+  useRouter: () => ({ replace: vi.fn() }),
+}));
+
 vi.mock("@/lib/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/auth")>();
   return {

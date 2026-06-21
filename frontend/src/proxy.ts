@@ -20,8 +20,9 @@ function readSession(request: NextRequest): Session | null {
   }
 }
 
-function homePathForSession(session: Session): string {
-  return session.type === "vendor" ? "/vendor/marketplace" : "/";
+function homePathForSession(_session: Session): string {
+  void _session;
+  return "/tavi";
 }
 
 export default function proxy(request: NextRequest) {
@@ -39,9 +40,15 @@ export default function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  if (pathname === "/" || pathname === "/home") {
+    return NextResponse.redirect(new URL("/tavi", request.url));
+  }
+
   if (
     session.type === "vendor" &&
-    (pathname === "/" || pathname.startsWith("/work-orders") || pathname.startsWith("/vendors"))
+    (pathname.startsWith("/work-orders") ||
+      pathname.startsWith("/facilities") ||
+      pathname.startsWith("/vendors"))
   ) {
     return NextResponse.redirect(new URL("/vendor/marketplace", request.url));
   }

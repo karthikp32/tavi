@@ -3,10 +3,10 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import VendorMarketplacePage from "../page";
 import { getWorkOrders } from "@/lib/api/work-orders";
 import { getWorkOrderBids } from "@/lib/api/bids";
-import { ChatInput } from "@/components/chat/ChatInput";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/vendor/marketplace",
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
 vi.mock("@/lib/api/work-orders", () => ({
@@ -17,10 +17,6 @@ vi.mock("@/lib/api/bids", () => ({
   getWorkOrderBids: vi.fn(),
 }));
 
-vi.mock("@/components/chat/ChatInput", () => ({
-  ChatInput: vi.fn(() => <div data-testid="vendor-chat" />),
-}));
-
 afterEach(() => {
   document.cookie = "tavi_session=; path=/; max-age=0";
   vi.clearAllMocks();
@@ -28,7 +24,7 @@ afterEach(() => {
 });
 
 describe("VendorMarketplacePage", () => {
-  it("renders vendor chat with the authenticated vendor context", async () => {
+  it("renders marketplace work orders without embedding the Tavi chat", async () => {
     document.cookie = `tavi_session=${encodeURIComponent(
       JSON.stringify({
         id: "vendor_1",
@@ -43,12 +39,8 @@ describe("VendorMarketplacePage", () => {
 
     render(<VendorMarketplacePage />);
 
-    expect(screen.getByRole("heading", { name: "Tavi Agent" })).toBeInTheDocument();
-    expect(screen.getByTestId("vendor-chat")).toBeInTheDocument();
-    expect(ChatInput).toHaveBeenCalledWith(
-      expect.objectContaining({ actorType: "vendor", actorId: "vendor_1" }),
-      undefined,
-    );
+    expect(screen.getByRole("heading", { name: "Marketplace" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Tavi Agent" })).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText("No work orders right now")).toBeInTheDocument();
     });

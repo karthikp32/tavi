@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +22,7 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [session] = useState<Session | null>(() => getSession());
 
   const navLinks = session ? navLinksByType[session.type] : [];
@@ -29,7 +30,7 @@ export function AppShell({ children }: AppShellProps) {
 
   function handleLogout() {
     clearSession();
-    window.location.href = "/login";
+    router.replace("/login");
   }
 
   return (
@@ -37,7 +38,10 @@ export function AppShell({ children }: AppShellProps) {
       <header className="border-b border-tavi-navy/10 bg-white">
         <nav className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-5">
           <div className="flex items-center gap-6">
-            <Link href={brandHref} className="text-sm font-bold uppercase tracking-wide text-tavi-navy">
+            <Link
+              href={brandHref}
+              className="text-sm font-bold uppercase tracking-wide text-tavi-navy"
+            >
               Tavi
             </Link>
             <ul className="flex gap-8">
