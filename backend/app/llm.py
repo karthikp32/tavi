@@ -41,6 +41,8 @@ Important guidelines you MUST follow:
    - requested date/time
    - target budget
    - urgency level (low, normal, high, emergency)
+   - private negotiation mode or transparent auction mode
+   - bid deadline
    If any of these are missing, ask the user to clarify before calling create_work_order.
 4. Database Reads/Writes: Always use the appropriate tool function to read from or write to the database. Do not assume any data or guess IDs.
 5. Vendor Sourcing & Filtering: When searching for vendors using `search_vendors`, prioritize vendors with:
