@@ -254,6 +254,7 @@ export interface ChatSession {
   summary: string | null;
   created_at: string;
   updated_at: string;
+  messages: ChatMessage[];
 }
 
 export interface ChatMessage {

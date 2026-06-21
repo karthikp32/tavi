@@ -44,6 +44,70 @@ describe("ChatInput", () => {
     );
   });
 
+  it("renders initial messages from a selected chat session", () => {
+    render(
+      <ChatInput
+        chatSession={{
+          id: "session_1",
+          user_id: "user_1",
+          work_order_id: "wo_1",
+          status: "active",
+          summary: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          messages: [
+            {
+              id: "msg_1",
+              chat_session_id: "session_1",
+              work_order_id: "wo_1",
+              role: "facility_manager",
+              body: "Fix a leaking sink",
+              extracted_fields: null,
+              created_at: "2026-01-01T00:00:00Z",
+            },
+            {
+              id: "msg_2",
+              chat_session_id: "session_1",
+              work_order_id: "wo_1",
+              role: "assistant",
+              body: "I can help with that.",
+              extracted_fields: null,
+              created_at: "2026-01-01T00:01:00Z",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Fix a leaking sink")).toBeInTheDocument();
+    expect(screen.getByText("I can help with that.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /view work order/i })).toHaveAttribute(
+      "href",
+      "/work-orders/wo_1",
+    );
+  });
+
+  it("notifies when a new chat session is created", async () => {
+    const onSessionChange = vi.fn();
+    vi.mocked(sendLlmMessage).mockResolvedValue({
+      response: "I can help with that.",
+      chat_session_id: "session_1",
+      work_order_id: null,
+      tool_calls: [],
+    });
+
+    render(<ChatInput onSessionChange={onSessionChange} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/describe your work order/i), {
+      target: { value: "Fix a leaking sink" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    await waitFor(() => {
+      expect(onSessionChange).toHaveBeenCalledWith("session_1");
+    });
+  });
+
   it("renders a link to the created work order when one is returned", async () => {
     vi.mocked(sendLlmMessage).mockResolvedValue({
       response: "Created your work order.",

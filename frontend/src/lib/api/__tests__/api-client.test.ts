@@ -4,7 +4,7 @@ import { contactVendor, getVendors } from "../vendors";
 import { contactWorkOrderCandidate } from "../candidates";
 import { createWorkOrderBid } from "../bids";
 import { getWorkOrderTimeline } from "../timeline";
-import { createChatMessage } from "../chat";
+import { createChatMessage, deleteChatSession, getChatSessions, updateChatSession } from "../chat";
 
 function mockFetchOnce(body: unknown, ok = true) {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -133,6 +133,42 @@ describe("api client request building", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/chat-sessions/session_1/messages",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("gets chat sessions", async () => {
+    const fetchMock = mockFetchOnce([]);
+
+    await getChatSessions();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/chat-sessions",
+      expect.anything(),
+    );
+  });
+
+  it("deletes a chat session", async () => {
+    const fetchMock = mockFetchOnce({}, true);
+
+    await deleteChatSession("session_1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/chat-sessions/session_1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("patches a chat session label", async () => {
+    const fetchMock = mockFetchOnce({ id: "session_1", summary: "Leaking sink" });
+
+    await updateChatSession("session_1", { summary: "Leaking sink" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/chat-sessions/session_1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ summary: "Leaking sink" }),
+      }),
     );
   });
 

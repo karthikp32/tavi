@@ -1,24 +1,47 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "../ui/Button";
 import { ErrorState } from "../ui/ErrorState";
 import { sendLlmMessage } from "../../lib/api/llm";
+import type { ChatSession } from "../../lib/types";
 
 interface ConversationMessage {
   role: "user" | "assistant";
   body: string;
 }
 
-export function ChatInput() {
+interface ChatInputProps {
+  chatSession?: ChatSession | null;
+  onSessionChange?: (chatSessionId: string) => void;
+}
+
+function getConversationMessages(chatSession?: ChatSession | null): ConversationMessage[] {
+  return (chatSession?.messages ?? [])
+    .filter((message) => message.role === "facility_manager" || message.role === "assistant")
+    .map((message) => ({
+      role: message.role === "assistant" ? "assistant" : "user",
+      body: message.body,
+    }));
+}
+
+export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
   const [value, setValue] = useState("");
-  const [messages, setMessages] = useState<ConversationMessage[]>([]);
-  const [chatSessionId, setChatSessionId] = useState<string | undefined>(undefined);
-  const [workOrderId, setWorkOrderId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ConversationMessage[]>(() =>
+    getConversationMessages(chatSession),
+  );
+  const [chatSessionId, setChatSessionId] = useState<string | undefined>(chatSession?.id);
+  const [workOrderId, setWorkOrderId] = useState<string | null>(chatSession?.work_order_id ?? null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,7 +61,11 @@ export function ChatInput() {
         chat_session_id: chatSessionId,
         work_order_id: workOrderId ?? undefined,
       }, abortController.signal);
+      const isNewSession = result.chat_session_id !== chatSessionId;
       setChatSessionId(result.chat_session_id);
+      if (isNewSession) {
+        onSessionChange?.(result.chat_session_id);
+      }
       if (result.work_order_id) {
         setWorkOrderId(result.work_order_id);
       }
