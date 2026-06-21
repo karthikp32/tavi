@@ -16,11 +16,12 @@ const inputClassName =
 
 const cities = ["New York", "Los Angeles", "Chicago"];
 const trades = ["Plumbing", "Electrical", "HVAC", "Cleaning", "Lawncare", "General maintenance"];
+const ratingMarks = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"];
 
 export default function VendorsPage() {
   const [city, setCity] = useState("");
   const [trade, setTrade] = useState("");
-  const [minRating, setMinRating] = useState("");
+  const [minRating, setMinRating] = useState("4");
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -128,17 +129,25 @@ export default function VendorsPage() {
             ))}
           </select>
 
-          <input
-            aria-label="Minimum rating"
-            type="number"
-            min="0"
-            max="5"
-            step="0.1"
-            placeholder="Min rating"
-            value={minRating}
-            onChange={(event) => setMinRating(event.target.value)}
-            className={inputClassName}
-          />
+          <label className="flex items-center gap-3 text-sm text-tavi-navy/80">
+            <span>Min rating: {Number(minRating).toFixed(1)}</span>
+            <input
+              aria-label="Minimum rating"
+              type="range"
+              min="1"
+              max="5"
+              step="0.5"
+              list="min-rating-marks"
+              value={minRating}
+              onChange={(event) => setMinRating(event.target.value)}
+              className="h-1 w-40 cursor-pointer accent-tavi-navy-dark"
+            />
+            <datalist id="min-rating-marks">
+              {ratingMarks.map((mark) => (
+                <option key={mark} value={mark} />
+              ))}
+            </datalist>
+          </label>
         </form>
 
         {isLoading ? <LoadingState label="Loading vendors…" /> : null}

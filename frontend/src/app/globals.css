@@ -2,13 +2,13 @@
 
 :root {
   --background: #f6f3ea;
-  --foreground: #111111;
-  --color-tavi-navy: #111111;
-  --color-tavi-navy-dark: #000000;
+  --foreground: #09356c;
+  --color-tavi-navy: #09356c;
+  --color-tavi-navy-dark: #06294f;
   --color-tavi-indigo: #45501c;
   --color-tavi-lavender: #f2f7d6;
   --color-tavi-pale-blue: #efeada;
-  --color-tavi-accent: #d7ff3f;
+  --color-tavi-accent: #cce4ff;
   --color-tavi-border: #d8d2c4;
 }
 

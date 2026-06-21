@@ -30,14 +30,14 @@ describe("VendorsPage", () => {
     render(<VendorsPage />);
 
     await waitFor(() => {
-      expect(getVendors).toHaveBeenCalledWith({});
+      expect(getVendors).toHaveBeenCalledWith({ rating: 4 });
     });
 
     fireEvent.change(screen.getByLabelText("City"), { target: { value: "New York" } });
     fireEvent.change(screen.getByLabelText("Trade"), { target: { value: "Plumbing" } });
 
     await waitFor(() => {
-      expect(getVendors).toHaveBeenCalledWith({ city: "New York", trade: "Plumbing" });
+      expect(getVendors).toHaveBeenCalledWith({ city: "New York", trade: "Plumbing", rating: 4 });
     });
   });
 });
