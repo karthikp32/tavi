@@ -55,7 +55,7 @@ export type AgentActionStatus = "pending" | "running" | "succeeded" | "failed" |
 
 export type ChatSessionStatus = "active" | "completed" | "abandoned";
 
-export type ChatMessageRole = "facility_manager" | "assistant" | "system" | "tool";
+export type ChatMessageRole = "facility_manager" | "vendor" | "assistant" | "system" | "tool";
 
 export interface Company {
   id: string;

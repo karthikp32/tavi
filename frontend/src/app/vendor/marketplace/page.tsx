@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { ChatInput } from "@/components/chat/ChatInput";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -168,6 +169,11 @@ export default function VendorMarketplacePage() {
     <AppShell>
       <div className="flex flex-col gap-6">
         <h1 className="text-xl font-semibold text-tavi-navy">Marketplace</h1>
+
+        <section className="border-b border-tavi-navy/10 pb-6">
+          <h2 className="mb-3 text-sm font-semibold text-tavi-navy">Tavi Agent</h2>
+          <ChatInput actorType="vendor" actorId={session.id} />
+        </section>
 
         {isLoading ? <LoadingState label="Loading open work orders…" /> : null}
         {error ? <ErrorState message={error} /> : null}

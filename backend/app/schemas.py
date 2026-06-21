@@ -55,7 +55,7 @@ ACTOR_TYPES = {"system", "agent", "human", "vendor", "facility_manager"}
 BID_STATUSES = {"submitted", "accepted", "rejected", "withdrawn", "expired"}
 AGENT_ACTION_STATUSES = {"pending", "running", "succeeded", "failed", "cancelled"}
 CHAT_SESSION_STATUSES = {"active", "completed", "abandoned"}
-CHAT_MESSAGE_ROLES = {"facility_manager", "assistant", "system", "tool"}
+CHAT_MESSAGE_ROLES = {"facility_manager", "vendor", "assistant", "system", "tool"}
 COMPANY_TYPES = {"facility_manager", "vendor", "platform"}
 USER_TYPES = {"facility_manager", "vendor", "admin"}
 
@@ -636,6 +636,8 @@ class LlmMessageRequest(AppBaseModel):
     chat_session_id: Optional[str] = None
     message: str
     work_order_id: Optional[str] = None
+    actor_type: Optional[str] = None
+    actor_id: Optional[str] = None
 
 class LlmMessageResponse(AppBaseModel):
     response: str
