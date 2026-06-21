@@ -15,7 +15,15 @@ import { getSession, type Session } from "@/lib/auth";
 import { VendorPlaceBidForm } from "./VendorPlaceBidForm";
 import type { Bid, WorkOrder, WorkOrderStatus } from "@/lib/types";
 
-const OPEN_STATUSES: WorkOrderStatus[] = ["ready_for_vendor_discovery", "discovering_vendors"];
+const CLOSED_STATUSES: WorkOrderStatus[] = [
+  "ready_for_award",
+  "awarded",
+  "scheduled",
+  "in_progress",
+  "completed",
+  "cancelled",
+];
+const isOpenForBidding = (status: WorkOrderStatus) => !CLOSED_STATUSES.includes(status);
 const ACTIVE_BID_STATUSES: Bid["status"][] = ["submitted", "accepted"];
 
 function formatCents(cents: number | null): string {
@@ -54,7 +62,7 @@ export default function VendorMarketplacePage() {
         });
         const relevant = tradeWorkOrders.filter(
           (wo) =>
-            OPEN_STATUSES.includes(wo.status) ||
+            isOpenForBidding(wo.status) ||
             bidsMap[wo.id].some((bid) => bid.candidate?.vendor_id === session!.id),
         );
         if (!isCancelled) {
@@ -96,6 +104,16 @@ export default function VendorMarketplacePage() {
       render: (wo) => (wo.bid_deadline_at ? new Date(wo.bid_deadline_at).toLocaleString() : "—"),
     },
     {
+      key: "arrival_window",
+      header: "Requested arrival window",
+      render: (wo) => {
+        if (!wo.required_arrival_window_start || !wo.required_arrival_window_end) return "—";
+        const start = new Date(wo.required_arrival_window_start).toLocaleString();
+        const end = new Date(wo.required_arrival_window_end).toLocaleString();
+        return `${start} – ${end}`;
+      },
+    },
+    {
       key: "status",
       header: "Status",
       render: (wo) => <StatusBadge status={wo.status} />,
@@ -128,7 +146,7 @@ export default function VendorMarketplacePage() {
             <span className="text-sm text-tavi-navy/50">Not selected</span>
           );
         }
-        if (!OPEN_STATUSES.includes(wo.status)) {
+        if (!isOpenForBidding(wo.status)) {
           return <span className="text-sm text-tavi-navy/50">Bidding closed</span>;
         }
         const lowestBid = getLowestActiveBid(bidsByWorkOrderId[wo.id] ?? []);
