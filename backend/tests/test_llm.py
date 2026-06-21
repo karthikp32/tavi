@@ -79,13 +79,18 @@ def stream_event(delta):
     return "data: " + json.dumps({"choices": [{"delta": delta}]})
 
 
+def auth_headers(actor):
+    return {"X-Tavi-Login-Token": actor.login_token}
+
+
 def test_session_creation_and_persistence(client, db_session):
+    user = db_session.query(models.User).filter(models.User.user_type == "facility_manager").first()
     # Call without chat_session_id
     payload = {
         "message": "Hello, I need assistance managing my projects."
     }
     with patch("app.llm.OPENROUTER_API_KEY", ""):
-        response = client.post("/api/llm/messages", json=payload)
+        response = client.post("/api/llm/messages", json=payload, headers=auth_headers(user))
     assert response.status_code == 200
     data = response.json()
     assert data["chat_session_id"] is not None
@@ -105,12 +110,13 @@ def test_session_creation_and_persistence(client, db_session):
     assert msgs[1].role == "assistant"
 
 def test_local_demo_mock_mode_trigger(client, db_session):
+    user = db_session.query(models.User).filter(models.User.user_type == "facility_manager").first()
     # Test that missing API key returns a "model is unavailable" response
     with patch("app.llm.OPENROUTER_API_KEY", ""):
         payload = {
             "message": "I need a plumber in New York to fix a pipe leak"
         }
-        response = client.post("/api/llm/messages", json=payload)
+        response = client.post("/api/llm/messages", json=payload, headers=auth_headers(user))
         assert response.status_code == 200
         data = response.json()
         assert len(data["tool_calls"]) == 0
@@ -149,7 +155,7 @@ def test_chat_sessions_list_returns_recent_sessions_with_messages(client, db_ses
     ])
     db_session.commit()
 
-    response = client.get("/api/chat-sessions")
+    response = client.get("/api/chat-sessions", headers=auth_headers(user))
 
     assert response.status_code == 200
     data = response.json()
@@ -175,7 +181,7 @@ def test_delete_chat_session_removes_session_and_messages(client, db_session):
     )
     db_session.commit()
 
-    response = client.delete(f"/api/chat-sessions/{chat_session.id}")
+    response = client.delete(f"/api/chat-sessions/{chat_session.id}", headers=auth_headers(user))
 
     assert response.status_code == 204
     assert db_session.query(models.ChatSession).filter(models.ChatSession.id == chat_session.id).first() is None
@@ -195,6 +201,7 @@ def test_patch_chat_session_updates_summary_label(client, db_session):
     response = client.patch(
         f"/api/chat-sessions/{chat_session.id}",
         json={"summary": "Leaking sink"},
+        headers=auth_headers(user),
     )
 
     assert response.status_code == 200
@@ -455,6 +462,255 @@ def test_facility_manager_list_tools_reject_non_facility_manager_user(db_session
         db_session, "list_user_work_orders", {"user_id": vendor_user.id}
     ) == {"error": "User is not a facility manager"}
 
+def test_vendor_work_order_tool_returns_matching_transparent_auction_work_orders(db_session):
+    vendor = db_session.query(models.Vendor).filter(models.Vendor.trade == "Plumbing").first()
+    other_vendor = db_session.query(models.Vendor).filter(models.Vendor.trade != vendor.trade).first()
+    user = db_session.query(models.User).filter(models.User.user_type == "facility_manager").first()
+
+    matching = models.WorkOrder(
+        user_id=user.id,
+        title="Marketplace plumbing job",
+        description="Open to plumbing marketplace bids.",
+        trade=vendor.trade,
+        status="collecting_bids",
+        bidding_mode="transparent_auction",
+        target_budget_cents=30000,
+    )
+    wrong_mode = models.WorkOrder(
+        user_id=user.id,
+        title="Private plumbing job",
+        description="Should be hidden from marketplace chat.",
+        trade=vendor.trade,
+        status="collecting_bids",
+        bidding_mode="private_negotiation",
+    )
+    wrong_trade = models.WorkOrder(
+        user_id=user.id,
+        title="Wrong trade marketplace job",
+        description="Should be hidden because the vendor trade does not match.",
+        trade=other_vendor.trade,
+        status="collecting_bids",
+        bidding_mode="transparent_auction",
+    )
+    db_session.add_all([matching, wrong_mode, wrong_trade])
+    db_session.commit()
+
+    other_candidate = models.WorkOrderCandidate(
+        work_order_id=matching.id,
+        vendor_id=other_vendor.id,
+        status="bid_submitted",
+    )
+    db_session.add(other_candidate)
+    db_session.commit()
+    db_session.add(
+        models.Bid(
+            work_order_id=matching.id,
+            work_order_candidate_id=other_candidate.id,
+            amount_cents=22000,
+            status="submitted",
+        )
+    )
+    db_session.commit()
+
+    res = llm.execute_tool(
+        db_session, "list_vendor_work_orders", {"vendor_id": vendor.id}
+    )
+
+    assert "list_vendor_work_orders" in llm.TOOL_FUNCTIONS
+    assert any(tool["function"]["name"] == "list_vendor_work_orders" for tool in llm.TOOLS)
+    assert [wo["id"] for wo in res if wo["id"] in {matching.id, wrong_mode.id, wrong_trade.id}] == [
+        matching.id
+    ]
+    listed = next(wo for wo in res if wo["id"] == matching.id)
+    assert listed["lowest_bid_cents"] == 22000
+    assert listed["lowest_bid_is_yours"] is False
+    assert listed["vendor_bid_cents"] is None
+    assert "lowest_bid_vendor_id" not in listed
+    assert other_vendor.id not in json.dumps(listed)
+
+def test_vendor_make_bid_creates_candidate_and_reports_lowest_bid(db_session):
+    vendor = db_session.query(models.Vendor).filter(models.Vendor.trade == "Electrical").first()
+    other_vendor = db_session.query(models.Vendor).filter(models.Vendor.id != vendor.id).first()
+    user = db_session.query(models.User).filter(models.User.user_type == "facility_manager").first()
+    wo = models.WorkOrder(
+        user_id=user.id,
+        title="Marketplace electrical job",
+        description="Needs a vendor bid.",
+        trade=vendor.trade,
+        status="collecting_bids",
+        bidding_mode="transparent_auction",
+    )
+    db_session.add(wo)
+    db_session.commit()
+    other_candidate = models.WorkOrderCandidate(
+        work_order_id=wo.id,
+        vendor_id=other_vendor.id,
+        status="bid_submitted",
+    )
+    db_session.add(other_candidate)
+    db_session.commit()
+    db_session.add(
+        models.Bid(
+            work_order_id=wo.id,
+            work_order_candidate_id=other_candidate.id,
+            amount_cents=50000,
+            status="submitted",
+        )
+    )
+    db_session.commit()
+
+    res = llm.execute_tool(
+        db_session,
+        "make_vendor_bid",
+        {
+            "vendor_id": vendor.id,
+            "work_order_id": wo.id,
+            "amount_cents": 45000,
+            "scope_notes": "Includes fixture replacement.",
+        },
+    )
+
+    assert res["amount_cents"] == 45000
+    assert res["previous_lowest_bid_cents"] == 50000
+    assert res["lowest_bid_cents"] == 45000
+    assert res["lowest_bid_is_yours"] is True
+    assert "lowest_bid_vendor_id" not in res
+    assert other_vendor.id not in json.dumps(res)
+    candidate = db_session.query(models.WorkOrderCandidate).filter(
+        models.WorkOrderCandidate.work_order_id == wo.id,
+        models.WorkOrderCandidate.vendor_id == vendor.id,
+    ).one()
+    assert candidate.status == "bid_submitted"
+    assert db_session.query(models.Bid).filter(models.Bid.work_order_candidate_id == candidate.id).count() == 1
+
+def test_vendor_make_bid_rejects_wrong_trade_or_private_work_order(db_session):
+    vendor = db_session.query(models.Vendor).first()
+    other_vendor = db_session.query(models.Vendor).filter(models.Vendor.trade != vendor.trade).first()
+    user = db_session.query(models.User).filter(models.User.user_type == "facility_manager").first()
+    wrong_trade = models.WorkOrder(
+        user_id=user.id,
+        title="Wrong trade",
+        description="Wrong trade.",
+        trade=other_vendor.trade,
+        status="collecting_bids",
+        bidding_mode="transparent_auction",
+    )
+    private = models.WorkOrder(
+        user_id=user.id,
+        title="Private mode",
+        description="Private bid mode.",
+        trade=vendor.trade,
+        status="collecting_bids",
+        bidding_mode="private_negotiation",
+    )
+    db_session.add_all([wrong_trade, private])
+    db_session.commit()
+
+    assert llm.execute_tool(
+        db_session,
+        "make_vendor_bid",
+        {"vendor_id": vendor.id, "work_order_id": wrong_trade.id, "amount_cents": 10000},
+    ) == {"error": "Work order is not available to this vendor"}
+    assert llm.execute_tool(
+        db_session,
+        "make_vendor_bid",
+        {"vendor_id": vendor.id, "work_order_id": private.id, "amount_cents": 10000},
+    ) == {"error": "Work order is not available for marketplace bidding"}
+
+def test_role_tool_policy_blocks_vendor_from_facility_manager_tools(db_session):
+    vendor = db_session.query(models.Vendor).first()
+    user = db_session.query(models.User).filter(models.User.user_type == "facility_manager").first()
+
+    assert llm.execute_tool(
+        db_session,
+        "list_facilities",
+        {"user_id": user.id},
+        actor_type="vendor",
+        actor_id=vendor.id,
+    ) == {"error": "Tool is not allowed for vendor users"}
+
+def test_off_domain_guardrail_refuses_without_model_call(client):
+    db = TestingSessionLocal()
+    vendor = db.query(models.Vendor).first()
+    db.close()
+
+    response = client.post(
+        "/api/llm/messages",
+        json={
+            "message": "Solve a complex physics problem about orbital mechanics",
+            "actor_type": "vendor",
+            "actor_id": vendor.id,
+        },
+        headers=auth_headers(vendor),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "work orders, marketplace bidding, vendors, facilities, or Tavi account workflows" in data["response"]
+    assert data["tool_calls"] == []
+
+def test_vendor_chat_prompt_includes_authenticated_vendor_context(client, db_session):
+    vendor = db_session.query(models.Vendor).first()
+    chat_session = models.ChatSession(user_id=vendor.id, status="active")
+    db_session.add(chat_session)
+    db_session.commit()
+
+    response_stream = FakeStreamResponse([
+        stream_event({"role": "assistant", "content": "I can help with your marketplace bids."}),
+        "data: [DONE]",
+    ])
+
+    with patch("app.llm.OPENROUTER_API_KEY", "mock_key"):
+        with patch("app.llm.httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value.__enter__.return_value = mock_client
+            mock_client.stream.return_value = response_stream
+
+            response = client.post(
+                "/api/llm/messages",
+                json={
+                    "chat_session_id": chat_session.id,
+                    "message": "What jobs can I bid on?",
+                    "actor_type": "vendor",
+                    "actor_id": vendor.id,
+                },
+                headers=auth_headers(vendor),
+            )
+
+    assert response.status_code == 200
+    first_call = mock_client.stream.call_args_list[0]
+    system_message = first_call.kwargs["json"]["messages"][0]["content"]
+    assert vendor.name in system_message
+    assert vendor.trade in system_message
+    assert vendor.id in system_message
+    tool_names = {
+        tool["function"]["name"] for tool in first_call.kwargs["json"]["tools"]
+    }
+    assert tool_names == {"list_vendor_work_orders", "make_vendor_bid"}
+
+def test_llm_message_rejects_actor_mismatched_chat_session(client, db_session):
+    first_vendor = db_session.query(models.Vendor).first()
+    second_vendor = (
+        db_session.query(models.Vendor).filter(models.Vendor.id != first_vendor.id).first()
+    )
+    chat_session = models.ChatSession(user_id=first_vendor.id, status="active")
+    db_session.add(chat_session)
+    db_session.commit()
+
+    response = client.post(
+        "/api/llm/messages",
+        json={
+            "chat_session_id": chat_session.id,
+            "message": "What can I bid on?",
+            "actor_type": "vendor",
+            "actor_id": second_vendor.id,
+        },
+        headers=auth_headers(second_vendor),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Chat session does not belong to this actor"
+
 def test_multi_turn_tool_execution_loop(client, db_session):
     # Mock OpenRouter API stream returning a tool call first, then a text response
     user = db_session.query(models.User).first()
@@ -512,7 +768,7 @@ def test_multi_turn_tool_execution_loop(client, db_session):
                 "chat_session_id": chat_session.id,
                 "message": "Please create a plumbing work order"
             }
-            response = client.post("/api/llm/messages", json=payload)
+            response = client.post("/api/llm/messages", json=payload, headers=auth_headers(user))
             assert response.status_code == 200
             data = response.json()
             assert "created the Plumbing work order" in data["response"]
@@ -584,6 +840,7 @@ def test_fallback_response_is_persisted(client, db_session):
                     "chat_session_id": chat_session.id,
                     "message": "Keep calling tools",
                 },
+                headers=auth_headers(user),
             )
 
     assert response.status_code == 200

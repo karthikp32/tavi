@@ -4,6 +4,8 @@ export interface SendLlmMessagePayload {
   message: string;
   chat_session_id?: string;
   work_order_id?: string;
+  actor_type?: "facility_manager" | "vendor";
+  actor_id?: string;
 }
 
 export interface LlmMessageResponse {

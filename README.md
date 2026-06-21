@@ -108,6 +108,12 @@ backend/
 
 ## Design Decisions
 
+### LLM Safety Guardrails
+
+For the scope of this project, Tavi uses role-specific system prompts and server-side tool allowlists to keep facility-manager and vendor chats focused on work orders, facilities, vendors, marketplace bidding, and bid actions. The prompts explicitly instruct the model to refuse unrelated requests and prompt-injection attempts, while the backend only exposes the tools each actor type is allowed to use.
+
+In production, Tavi would add a dedicated safety classifier plus industry-leading input and output guardrails before and after the LLM call. Those layers would classify unsafe or off-domain input, detect prompt injection, validate generated responses, and block unsafe outputs before they reach the UI.
+
 ### Dynamic Vendor Price Fit Calculation
 
 When searching for vendors in the marketplace via the `search_vendors` tool, the system calculates a dynamic `price_fit` score (ranging from `0.0` to `1.0`) to indicate how well a vendor's pricing matches the user's budget expectations.

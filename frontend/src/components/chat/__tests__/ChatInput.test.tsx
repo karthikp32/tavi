@@ -40,6 +40,8 @@ describe("ChatInput", () => {
         message: "Fix a leaking sink",
         chat_session_id: undefined,
         work_order_id: undefined,
+        actor_type: "facility_manager",
+        actor_id: undefined,
       },
       expect.any(AbortSignal),
     );
@@ -118,6 +120,66 @@ describe("ChatInput", () => {
       "href",
       "/work-orders/wo_1",
     );
+  });
+
+  it("uses vendor placeholder and sends vendor actor context", async () => {
+    vi.mocked(sendLlmMessage).mockResolvedValue({
+      response: "The current lowest bid is $220.00.",
+      chat_session_id: "session_1",
+      work_order_id: null,
+      tool_calls: [],
+    });
+
+    render(<ChatInput actorType="vendor" actorId="vendor_1" />);
+
+    fireEvent.change(screen.getByPlaceholderText(/marketplace work orders/i), {
+      target: { value: "Can I bid 220 dollars?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    await waitFor(() => {
+      expect(sendLlmMessage).toHaveBeenCalledWith(
+        {
+          message: "Can I bid 220 dollars?",
+          chat_session_id: undefined,
+          work_order_id: undefined,
+          actor_type: "vendor",
+          actor_id: "vendor_1",
+        },
+        expect.any(AbortSignal),
+      );
+    });
+  });
+
+  it("renders vendor-authored chat history as user messages", () => {
+    render(
+      <ChatInput
+        actorType="vendor"
+        actorId="vendor_1"
+        chatSession={{
+          id: "session_1",
+          user_id: "vendor_1",
+          work_order_id: null,
+          status: "active",
+          summary: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          messages: [
+            {
+              id: "msg_1",
+              chat_session_id: "session_1",
+              work_order_id: null,
+              role: "vendor",
+              body: "What can I bid on?",
+              extracted_fields: null,
+              created_at: "2026-01-01T00:00:00Z",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("What can I bid on?")).toBeInTheDocument();
   });
 
   it("notifies when a new chat session is created", async () => {
@@ -201,6 +263,8 @@ describe("ChatInput", () => {
           message: "Also check the breaker",
           chat_session_id: "session_1",
           work_order_id: "wo_1",
+          actor_type: "facility_manager",
+          actor_id: undefined,
         },
         expect.any(AbortSignal),
       );

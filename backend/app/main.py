@@ -107,6 +107,21 @@ def get_optional_current_user(
         return None
     return db.query(models.User).filter(models.User.login_token == x_tavi_login_token).first()
 
+
+def get_current_llm_actor(
+    x_tavi_login_token: str = Header(...),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    user = db.query(models.User).filter(models.User.login_token == x_tavi_login_token).first()
+    if user:
+        return {"id": user.id, "type": user.user_type, "user": user, "vendor": None}
+
+    vendor = db.query(models.Vendor).filter(models.Vendor.login_token == x_tavi_login_token).first()
+    if vendor:
+        return {"id": vendor.id, "type": "vendor", "user": None, "vendor": vendor}
+
+    raise HTTPException(status_code=401, detail="Invalid login token")
+
 @app.get("/health")
 @app.get("/")
 def health_check():
@@ -957,7 +972,7 @@ def post_llm_message(
     req: schemas.LlmMessageRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_actor: Dict[str, Any] = Depends(get_current_llm_actor),
 ):
     from . import llm
 
@@ -965,20 +980,31 @@ def post_llm_message(
         def is_set(self) -> bool:
             return anyio.from_thread.run(request.is_disconnected)
     
+    actor_type = req.actor_type or current_actor["type"]
+    if actor_type not in {"facility_manager", "vendor"}:
+        raise HTTPException(status_code=400, detail="Invalid actor_type")
+    if actor_type != current_actor["type"]:
+        raise HTTPException(status_code=403, detail="Actor type does not match login token")
+
+    actor_id = req.actor_id or current_actor["id"]
+    if actor_id != current_actor["id"]:
+        raise HTTPException(status_code=403, detail="Actor does not match login token")
+
     # 1. Fetch or create chat session
     if req.chat_session_id:
         chat_session = db.query(models.ChatSession).filter(
             models.ChatSession.id == req.chat_session_id,
-            models.ChatSession.user_id == current_user.id,
         ).first()
         if not chat_session:
             raise HTTPException(status_code=404, detail="Chat session not found")
+        if chat_session.user_id != actor_id:
+            raise HTTPException(status_code=403, detail="Chat session does not belong to this actor")
         if req.work_order_id and not chat_session.work_order_id:
             chat_session.work_order_id = req.work_order_id
             db.commit()
     else:
         chat_session = models.ChatSession(
-            user_id=current_user.id,
+            user_id=actor_id,
             work_order_id=req.work_order_id,
             status="active",
             created_at=datetime.utcnow(),
@@ -991,7 +1017,12 @@ def post_llm_message(
     try:
         # 2. Run the LLM conversation loop
         res = llm.run_llm_conversation(
-            db, chat_session, req.message, ClientDisconnectCancel()
+            db,
+            chat_session,
+            req.message,
+            ClientDisconnectCancel(),
+            actor_type=actor_type,
+            actor_id=actor_id,
         )
     except llm.LlmRequestCancelled:
         raise HTTPException(status_code=499, detail="Message cancelled")

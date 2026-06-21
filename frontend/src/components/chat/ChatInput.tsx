@@ -16,11 +16,19 @@ interface ConversationMessage {
 interface ChatInputProps {
   chatSession?: ChatSession | null;
   onSessionChange?: (chatSessionId: string) => void;
+  actorType?: "facility_manager" | "vendor";
+  actorId?: string;
+  placeholder?: string;
 }
 
 function getConversationMessages(chatSession?: ChatSession | null): ConversationMessage[] {
   return (chatSession?.messages ?? [])
-    .filter((message) => message.role === "facility_manager" || message.role === "assistant")
+    .filter(
+      (message) =>
+        message.role === "facility_manager" ||
+        message.role === "vendor" ||
+        message.role === "assistant",
+    )
     .map((message) => ({
       role: message.role === "assistant" ? "assistant" : "user",
       body: message.body,
@@ -40,7 +48,13 @@ function formatDuration(totalSeconds: number): string {
   return seconds === 0 ? minutesLabel : `${minutesLabel} ${secondsLabel}`;
 }
 
-export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
+export function ChatInput({
+  chatSession,
+  onSessionChange,
+  actorType = "facility_manager",
+  actorId,
+  placeholder,
+}: ChatInputProps) {
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState<ConversationMessage[]>(() =>
     getConversationMessages(chatSession),
@@ -96,6 +110,8 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
         message,
         chat_session_id: chatSessionId,
         work_order_id: workOrderId ?? undefined,
+        actor_type: actorType,
+        actor_id: actorId,
       }, abortController.signal);
       const isNewSession = result.chat_session_id !== chatSessionId;
       setChatSessionId(result.chat_session_id);
@@ -134,6 +150,11 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
 
   const displayedThinkingSeconds = Math.max(thinkingSeconds, 1);
   const displayedThinkingDuration = formatDuration(displayedThinkingSeconds);
+  const textareaPlaceholder =
+    placeholder ??
+    (actorType === "vendor"
+      ? "Ask about marketplace work orders, current lowest bids, or help making a bid"
+      : "Describe your work order and Tavi will find matching vendors for your needs");
 
   return (
     <div className="flex w-full max-w-2xl flex-col gap-4">
@@ -187,7 +208,7 @@ export function ChatInput({ chatSession, onSessionChange }: ChatInputProps) {
           value={value}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe your work order and Tavi will find matching vendors for your needs"
+          placeholder={textareaPlaceholder}
           rows={3}
           className="w-full resize-none rounded-lg border border-tavi-navy/20 px-4 py-3 text-sm text-tavi-navy placeholder:text-tavi-navy/40 focus:border-tavi-indigo focus:outline-none"
         />
