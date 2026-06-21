@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 from .database import engine, Base, get_db, SessionLocal
 from . import models, schemas
-from .seed import ensure_seed_db, seed_db
+from .seed import ensure_seed_db, seed_db, migrate_half_work_orders_to_transparent_auction
 
 def migrate_schema():
     """Idempotently add columns introduced after the initial create_all, preserving existing rows."""
@@ -36,6 +36,7 @@ def initialize_database():
     ensure_login_token_columns()
     with SessionLocal() as startup_db:
         ensure_seed_db(startup_db)
+        migrate_half_work_orders_to_transparent_auction(startup_db)
 
 def ensure_communication_event_sender_columns():
     inspector = inspect(engine)

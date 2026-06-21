@@ -512,7 +512,7 @@ def seed_db(db: Session, announce: bool = True):
             max_price_cents=max_price,
             bid_deadline_at=now + timedelta(days=idx + 2),
             urgency=urgency,
-            bidding_mode="private_negotiation",
+            bidding_mode="transparent_auction" if idx % 2 == 0 else "private_negotiation",
             required_arrival_window_start=now + timedelta(days=idx + 3, hours=9),
             required_arrival_window_end=now + timedelta(days=idx + 3, hours=17),
         )
@@ -643,6 +643,25 @@ def migrate_yelp_vendor_seed_data(db: Session) -> int:
     finally:
         temp_db.close()
         temp_engine.dispose()
+
+
+def migrate_half_work_orders_to_transparent_auction(db: Session) -> int:
+    """One-time data migration: flip every other existing work order to
+    transparent_auction mode so the vendor marketplace (which only shows
+    transparent_auction work orders) has data to exercise in testing."""
+    work_orders = db.query(WorkOrder).order_by(WorkOrder.id).all()
+    if not work_orders or any(wo.bidding_mode == "transparent_auction" for wo in work_orders):
+        return 0
+
+    updated_count = 0
+    for idx, work_order in enumerate(work_orders):
+        if idx % 2 == 0:
+            work_order.bidding_mode = "transparent_auction"
+            updated_count += 1
+
+    if updated_count:
+        db.commit()
+    return updated_count
 
 
 def ensure_seed_db(db: Session) -> bool:

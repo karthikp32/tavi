@@ -54,7 +54,9 @@ export default function VendorMarketplacePage() {
       setError(null);
       try {
         const all = await getWorkOrders();
-        const tradeWorkOrders = all.filter((wo) => wo.trade === session!.trade);
+        const tradeWorkOrders = all.filter(
+          (wo) => wo.trade === session!.trade && wo.bidding_mode === "transparent_auction",
+        );
         const bidLists = await Promise.all(tradeWorkOrders.map((wo) => getWorkOrderBids(wo.id)));
         const bidsMap: Record<string, Bid[]> = {};
         tradeWorkOrders.forEach((wo, index) => {
