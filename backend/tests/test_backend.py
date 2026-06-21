@@ -89,6 +89,11 @@ def test_schema_creation_and_seeding(client):
     assert all(vendor["license_status"] for vendor in vendors)
     assert all(vendor["insurance_status"] for vendor in vendors)
 
+    green_tech = next(vendor for vendor in vendors if vendor["name"] == "Green Tech Plumbing")
+    assert green_tech["phone"] == "847-518-5338"
+    assert green_tech["email"] == "info@greentechplumbing.com"
+    assert green_tech["address"] == "1017 S. Graceland Ave"
+
 def test_ensure_seed_db_seeds_empty_sqlite_once(tmp_path):
     db_path = tmp_path / "auto_seed.db"
     auto_seed_engine = create_engine(

@@ -76,6 +76,19 @@ def seed_db(db: Session):
             f"&find_loc={quote_plus(f'{city}, {state}')}"
         )
 
+    verified_contact_details = {
+        "Green Tech Plumbing": {
+            "phone": "847-518-5338",
+            "email": "info@greentechplumbing.com",
+            "address": "1017 S. Graceland Ave",
+            "source_url": "https://greentechplumbing.com/",
+        },
+        "Four Seasons Heating, Air Conditioning, Plumbing": {
+            "phone": "1-866-444-2404",
+            "source_url": "https://www.fourseasonsheatingcooling.com/",
+        },
+    }
+
     # Yelp-backed local businesses, five per trade per city.
     vendor_specs = [
         ("Sam's Plumbing Services", "Plumbing", "New York", "4.7", 167),
@@ -173,17 +186,21 @@ def seed_db(db: Session):
     vendor_companies = []
     for vendor_idx, (name, trade, city, yelp_rating, yelp_review_count) in enumerate(vendor_specs, start=1):
         state, postal_code, _, _ = city_details[city]
+        contact_details = verified_contact_details.get(name, {})
         vc = Company(
             id=str(uuid.uuid4()),
             name=name,
             company_type="vendor",
             trade=trade,
+            phone=contact_details.get("phone"),
+            email=contact_details.get("email"),
+            address=contact_details.get("address"),
             city=city,
             state=state,
             postal_code=postal_code,
         )
         db.add(vc)
-        vendor_companies.append((vc, city, trade, vendor_idx, yelp_rating, yelp_review_count))
+        vendor_companies.append((vc, city, trade, vendor_idx, yelp_rating, yelp_review_count, contact_details))
     db.commit()
 
     # 2. Users
@@ -235,7 +252,7 @@ def seed_db(db: Session):
         "General maintenance": "maintenance-tech",
     }
     trade_login_counts = {trade: 0 for trade in trade_login_slugs}
-    for vc, city, trade, idx, yelp_rating, yelp_review_count in vendor_companies:
+    for vc, city, trade, idx, yelp_rating, yelp_review_count, contact_details in vendor_companies:
         _, _, latitude, longitude = city_details[city]
         quality = Decimal("0.90") - Decimal(idx % 5) * Decimal("0.03")
         availability = Decimal("0.85") - Decimal(idx % 4) * Decimal("0.04")
@@ -266,6 +283,7 @@ def seed_db(db: Session):
                 "yelp_search_url": yelp_search_url(trade, city),
                 "yelp_rating": yelp_rating,
                 "yelp_review_count": yelp_review_count,
+                "contact_source_url": contact_details.get("source_url"),
                 "license_verified_at": "2026-01-01",
                 "insurance_verified_at": "2026-01-01",
             },
