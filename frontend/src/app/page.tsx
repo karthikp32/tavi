@@ -21,6 +21,8 @@ export default function HomePage() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [selectedChatSessionId, setSelectedChatSessionId] = useState<string | null>(null);
   const [openChatMenuId, setOpenChatMenuId] = useState<string | null>(null);
+  const [editingChatSessionId, setEditingChatSessionId] = useState<string | null>(null);
+  const [editingChatTitle, setEditingChatTitle] = useState("");
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -41,13 +43,24 @@ export default function HomePage() {
     if (selectedChatSessionId === session.id) {
       setSelectedChatSessionId(null);
     }
+    if (editingChatSessionId === session.id) {
+      setEditingChatSessionId(null);
+      setEditingChatTitle("");
+    }
   }
 
-  async function handleRenameChatSession(session: ChatSession) {
-    const currentTitle = getSessionTitle(session);
-    const nextTitle = window.prompt("Rename chat", currentTitle)?.trim();
+  function startRenamingChatSession(session: ChatSession) {
     setOpenChatMenuId(null);
+    setEditingChatSessionId(session.id);
+    setEditingChatTitle(getSessionTitle(session));
+  }
+
+  async function saveRenamedChatSession(session: ChatSession) {
+    const currentTitle = getSessionTitle(session);
+    const nextTitle = editingChatTitle.trim();
     if (!nextTitle || nextTitle === currentTitle) {
+      setEditingChatSessionId(null);
+      setEditingChatTitle("");
       return;
     }
 
@@ -56,6 +69,8 @@ export default function HomePage() {
     setChatSessions((sessions) =>
       sessions.map((item) => (item.id === session.id ? updatedSession : item)),
     );
+    setEditingChatSessionId(null);
+    setEditingChatTitle("");
   }
 
   useEffect(() => {
@@ -122,16 +137,39 @@ export default function HomePage() {
                         : "text-tavi-navy/70 hover:bg-white/70 hover:text-tavi-navy")
                     }
                   >
-                    <button
-                      type="button"
-                      className={"min-w-0 flex-1 truncate px-3 py-2 text-left text-sm " + (isSelected ? "font-medium" : "")}
-                      onClick={() => {
-                        setOpenChatMenuId(null);
-                        setSelectedChatSessionId(session.id);
-                      }}
-                    >
-                      {getSessionTitle(session)}
-                    </button>
+                    {editingChatSessionId === session.id ? (
+                      <input
+                        aria-label="Rename chat"
+                        className="min-w-0 flex-1 rounded border border-tavi-indigo bg-white px-2 py-1.5 text-sm text-tavi-navy outline-none"
+                        value={editingChatTitle}
+                        onChange={(event) => setEditingChatTitle(event.target.value)}
+                        onBlur={() => {
+                          void saveRenamedChatSession(session);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void saveRenamedChatSession(session);
+                          }
+                          if (event.key === "Escape") {
+                            setEditingChatSessionId(null);
+                            setEditingChatTitle("");
+                          }
+                        }}
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={"min-w-0 flex-1 truncate px-3 py-2 text-left text-sm " + (isSelected ? "font-medium" : "")}
+                        onClick={() => {
+                          setOpenChatMenuId(null);
+                          setSelectedChatSessionId(session.id);
+                        }}
+                      >
+                        {getSessionTitle(session)}
+                      </button>
+                    )}
                     <button
                       type="button"
                       aria-label={`Chat options for ${getSessionTitle(session)}`}
@@ -150,7 +188,7 @@ export default function HomePage() {
                           type="button"
                           className="w-full px-3 py-2 text-left text-sm text-tavi-navy hover:bg-tavi-pale-blue/60"
                           onClick={() => {
-                            void handleRenameChatSession(session);
+                            startRenamingChatSession(session);
                           }}
                         >
                           Rename
