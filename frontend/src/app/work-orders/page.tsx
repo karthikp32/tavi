@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Table, type TableColumn } from "@/components/ui/Table";
 import { getWorkOrders } from "@/lib/api/work-orders";
 import { getWorkOrderCandidates } from "@/lib/api/candidates";
 import { getWorkOrderBids } from "@/lib/api/bids";
 import { getVendor } from "@/lib/api/vendors";
+import { NewWorkOrderForm } from "./new/NewWorkOrderForm";
 import type { WorkOrder } from "@/lib/types";
 
 interface WorkOrderRow {
@@ -34,6 +36,7 @@ export default function WorkOrdersPage() {
   const [vendorNameById, setVendorNameById] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isNewWorkOrderModalOpen, setIsNewWorkOrderModalOpen] = useState(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -164,7 +167,7 @@ export default function WorkOrdersPage() {
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-tavi-navy">Work Orders</h1>
-          <Button onClick={() => router.push("/work-orders/new")}>New Work Order</Button>
+          <Button onClick={() => setIsNewWorkOrderModalOpen(true)}>New Work Order</Button>
         </div>
 
         {isLoading ? <LoadingState label="Loading work orders…" /> : null}
@@ -179,6 +182,17 @@ export default function WorkOrdersPage() {
           <Table columns={columns} rows={rows} getRowKey={(row) => row.workOrder.id} />
         ) : null}
       </div>
+
+      {isNewWorkOrderModalOpen ? (
+        <Modal title="New Work Order" onClose={() => setIsNewWorkOrderModalOpen(false)}>
+          <NewWorkOrderForm
+            onSuccess={(workOrderId) => {
+              setIsNewWorkOrderModalOpen(false);
+              router.push(`/work-orders/${workOrderId}`);
+            }}
+          />
+        </Modal>
+      ) : null}
     </AppShell>
   );
 }

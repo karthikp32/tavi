@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import WorkOrdersPage from "../page";
 import { getWorkOrders } from "@/lib/api/work-orders";
 import { getWorkOrderCandidates } from "@/lib/api/candidates";
@@ -23,6 +23,11 @@ vi.mock("@/lib/api/bids", () => ({
   getWorkOrderBids: vi.fn(),
 }));
 
+vi.mock("@/lib/api/facilities", () => ({
+  getFacilities: vi.fn().mockResolvedValue([]),
+  createFacility: vi.fn(),
+}));
+
 afterEach(() => {
   vi.clearAllMocks();
   cleanup();
@@ -34,12 +39,26 @@ describe("WorkOrdersPage", () => {
 
     render(<WorkOrdersPage />);
     expect(screen.getByRole("heading", { name: "Work Orders" })).toBeInTheDocument();
-    screen.getByRole("button", { name: "New Work Order" }).click();
-    expect(pushMock).toHaveBeenCalledWith("/work-orders/new");
 
     await waitFor(() => {
       expect(screen.getByText("No work orders yet")).toBeInTheDocument();
     });
+  });
+
+  it("opens the new work order form in a modal immediately when clicked", async () => {
+    vi.mocked(getWorkOrders).mockResolvedValue([]);
+
+    render(<WorkOrdersPage />);
+    await waitFor(() => {
+      expect(screen.getByText("No work orders yet")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("dialog", { name: "New Work Order" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "New Work Order" }));
+
+    expect(screen.getByRole("dialog", { name: "New Work Order" })).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it("renders a fetched work order with derived bid and candidate counts, linking to its review page", async () => {

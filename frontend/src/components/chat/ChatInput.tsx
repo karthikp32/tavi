@@ -48,6 +48,13 @@ export function ChatInput() {
     }
   }
 
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  }
+
   return (
     <div className="flex w-full max-w-2xl flex-col gap-4">
       {messages.length > 0 ? (
@@ -83,6 +90,7 @@ export function ChatInput() {
         <textarea
           value={value}
           onChange={(event) => setValue(event.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Describe your work order and Tavi will find matching vendors for your needs"
           rows={3}
           className="w-full resize-none rounded-lg border border-tavi-navy/20 px-4 py-3 text-sm text-tavi-navy placeholder:text-tavi-navy/40 focus:border-tavi-indigo focus:outline-none"

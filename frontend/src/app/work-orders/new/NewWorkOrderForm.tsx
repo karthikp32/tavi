@@ -17,7 +17,11 @@ const urgencyOptions: Urgency[] = ["low", "normal", "high", "emergency"];
 
 const NEW_FACILITY_VALUE = "__new__";
 
-export function NewWorkOrderForm() {
+interface NewWorkOrderFormProps {
+  onSuccess?: (workOrderId: string) => void;
+}
+
+export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
   const router = useRouter();
 
   const [facilities, setFacilities] = useState<Facility[]>([]);
@@ -129,7 +133,11 @@ export function NewWorkOrderForm() {
         completed_vendor_quality_score: null,
       });
 
-      router.push(`/work-orders/${workOrder.id}`);
+      if (onSuccess) {
+        onSuccess(workOrder.id);
+      } else {
+        router.push(`/work-orders/${workOrder.id}`);
+      }
     } catch {
       setSubmitError("Something went wrong creating the work order. Please try again.");
     } finally {

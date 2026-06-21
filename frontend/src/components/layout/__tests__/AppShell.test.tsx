@@ -10,7 +10,7 @@ describe("AppShell", () => {
       </AppShell>,
     );
 
-    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Tavi" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Work Orders" })).toHaveAttribute(
       "href",
       "/work-orders",

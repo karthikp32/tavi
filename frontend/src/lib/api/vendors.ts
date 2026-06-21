@@ -26,12 +26,30 @@ export interface ContactVendorPayload {
   actor_name?: string;
 }
 
+function toNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const num = Number(value);
+  return Number.isNaN(num) ? null : num;
+}
+
+function normalizeVendor(vendor: Vendor): Vendor {
+  return {
+    ...vendor,
+    rating: toNumberOrNull(vendor.rating),
+    quality_score: toNumberOrNull(vendor.quality_score),
+    availability_score: toNumberOrNull(vendor.availability_score),
+    risk_score: toNumberOrNull(vendor.risk_score),
+  };
+}
+
 export function getVendors(filters: VendorSearchFilters = {}): Promise<Vendor[]> {
-  return apiFetch<Vendor[]>(`/api/vendors${buildQueryString(filters)}`);
+  return apiFetch<Vendor[]>(`/api/vendors${buildQueryString(filters)}`).then((vendors) =>
+    vendors.map(normalizeVendor),
+  );
 }
 
 export function getVendor(id: string): Promise<Vendor> {
-  return apiFetch<Vendor>(`/api/vendors/${id}`);
+  return apiFetch<Vendor>(`/api/vendors/${id}`).then(normalizeVendor);
 }
 
 export function contactVendor(
