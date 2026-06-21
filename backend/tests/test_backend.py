@@ -67,17 +67,19 @@ def test_schema_creation_and_seeding(client):
     response = client.get("/api/vendors")
     assert response.status_code == 200
     vendors = response.json()
-    assert len(vendors) > 0
+    assert len(vendors) == 90
 
     trades = {"Plumbing", "Electrical", "HVAC", "Cleaning", "Lawncare", "General maintenance"}
     for trade in trades:
         trade_vendors = [vendor for vendor in vendors if vendor["trade"] == trade]
-        assert len(trade_vendors) == 5
+        assert len(trade_vendors) == 15
         assert {vendor["city"] for vendor in trade_vendors} == {
             "New York",
             "Los Angeles",
             "Chicago",
         }
+        for city in {"New York", "Los Angeles", "Chicago"}:
+            assert len([vendor for vendor in trade_vendors if vendor["city"] == city]) == 5
 
     assert len({vendor["quality_score"] for vendor in vendors}) > 1
     assert len({vendor["availability_score"] for vendor in vendors}) > 1
