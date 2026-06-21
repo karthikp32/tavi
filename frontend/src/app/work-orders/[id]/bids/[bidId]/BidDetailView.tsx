@@ -107,7 +107,7 @@ export function BidDetailView({ workOrderId, bidId }: BidDetailViewProps) {
     if (vendor.risk_score !== null) {
       notes.push(`Vendor risk score is ${vendor.risk_score.toFixed(2)}.`);
     }
-    return notes.join(" ");
+    return notes.length > 0 ? notes.join(" ") : null;
   }, [workOrder, bid, vendor]);
 
   if (isLoading) {

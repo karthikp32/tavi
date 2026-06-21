@@ -602,4 +602,20 @@ def test_work_order_required_arrival_window_round_trip(client, db_session):
 
     fetched = client.get(f"/api/work-orders/{wo['id']}")
     assert fetched.status_code == 200
-    assert fetched.json()["required_arrival_window_start"].startswith("2026-07-01T09:00:00")
+    fetched_json = fetched.json()
+    assert fetched_json["required_arrival_window_start"].startswith("2026-07-01T09:00:00")
+    assert fetched_json["required_arrival_window_end"].startswith("2026-07-01T12:00:00")
+
+def test_work_order_arrival_window_rejects_inverted_range(client, db_session):
+    user = db_session.query(models.User).first()
+    wo_payload = {
+        "user_id": user.id,
+        "title": "Replace HVAC filter",
+        "description": "Filter needs replacement before summer.",
+        "trade": "HVAC",
+        "status": "draft",
+        "required_arrival_window_start": "2026-07-01T12:00:00",
+        "required_arrival_window_end": "2026-07-01T09:00:00",
+    }
+    response = client.post("/api/work-orders", json=wo_payload)
+    assert response.status_code == 422

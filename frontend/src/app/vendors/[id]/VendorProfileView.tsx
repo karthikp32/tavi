@@ -53,9 +53,17 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
       setCandidates([]);
       return;
     }
+    let isCancelled = false;
     getWorkOrderCandidates(selectedWorkOrderId)
-      .then(setCandidates)
-      .catch(() => setCandidates([]));
+      .then((result) => {
+        if (!isCancelled) setCandidates(result);
+      })
+      .catch(() => {
+        if (!isCancelled) setCandidates([]);
+      });
+    return () => {
+      isCancelled = true;
+    };
   }, [selectedWorkOrderId]);
 
   const candidate = useMemo(
@@ -65,6 +73,10 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
 
   async function handleContact(channel: "email" | "sms" | "phone") {
     if (!vendor) return;
+    if (!candidate && !selectedWorkOrderId) {
+      setContactError("Select a work order before contacting this vendor.");
+      return;
+    }
     setContactError(null);
     setIsContacting(true);
     try {

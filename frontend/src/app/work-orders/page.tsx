@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -12,6 +13,7 @@ import { Table, type TableColumn } from "@/components/ui/Table";
 import { getWorkOrders } from "@/lib/api/work-orders";
 import { getWorkOrderCandidates } from "@/lib/api/candidates";
 import { getWorkOrderBids } from "@/lib/api/bids";
+import { getVendor } from "@/lib/api/vendors";
 import type { WorkOrder } from "@/lib/types";
 
 interface WorkOrderRow {
@@ -27,7 +29,9 @@ function formatCents(cents: number | null): string {
 }
 
 export default function WorkOrdersPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
+  const [vendorNameById, setVendorNameById] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +43,7 @@ export default function WorkOrdersPage() {
       setError(null);
       try {
         const workOrders = await getWorkOrders();
-        const nextRows = await Promise.all(
+        const rowResults = await Promise.allSettled(
           workOrders.map(async (workOrder) => {
             const [candidates, bids] = await Promise.all([
               getWorkOrderCandidates(workOrder.id),
@@ -55,7 +59,36 @@ export default function WorkOrdersPage() {
             };
           }),
         );
-        if (!isCancelled) setRows(nextRows);
+        const nextRows = rowResults.map((result, index) =>
+          result.status === "fulfilled"
+            ? result.value
+            : {
+                workOrder: workOrders[index],
+                candidateCount: 0,
+                bidCount: 0,
+                bestBidCents: null,
+              },
+        );
+        const selectedVendorIds = Array.from(
+          new Set(
+            workOrders
+              .map((workOrder) => workOrder.selected_vendor_id)
+              .filter((id): id is string => id !== null),
+          ),
+        );
+        const vendorResults = await Promise.allSettled(selectedVendorIds.map((id) => getVendor(id)));
+        const nextVendorNameById = Object.fromEntries(
+          vendorResults
+            .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof getVendor>>> =>
+              result.status === "fulfilled",
+            )
+            .map((result) => [result.value.id, result.value.name]),
+        );
+
+        if (!isCancelled) {
+          setRows(nextRows);
+          setVendorNameById(nextVendorNameById);
+        }
       } catch {
         if (!isCancelled) setError("Could not load work orders. Please try again.");
       } finally {
@@ -119,7 +152,10 @@ export default function WorkOrdersPage() {
     {
       key: "recommended_winner",
       header: "Selected vendor",
-      render: ({ workOrder }) => (workOrder.selected_vendor_id ? "Selected" : "—"),
+      render: ({ workOrder }) =>
+        workOrder.selected_vendor_id
+          ? vendorNameById[workOrder.selected_vendor_id] ?? workOrder.selected_vendor_id
+          : "—",
     },
   ];
 
@@ -128,9 +164,7 @@ export default function WorkOrdersPage() {
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-tavi-navy">Work Orders</h1>
-          <Link href="/work-orders/new">
-            <Button>New Work Order</Button>
-          </Link>
+          <Button onClick={() => router.push("/work-orders/new")}>New Work Order</Button>
         </div>
 
         {isLoading ? <LoadingState label="Loading work orders…" /> : null}

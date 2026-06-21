@@ -5,6 +5,12 @@ import { getWorkOrders } from "@/lib/api/work-orders";
 import { getWorkOrderCandidates } from "@/lib/api/candidates";
 import { getWorkOrderBids } from "@/lib/api/bids";
 
+const pushMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+}));
+
 vi.mock("@/lib/api/work-orders", () => ({
   getWorkOrders: vi.fn(),
 }));
@@ -28,10 +34,8 @@ describe("WorkOrdersPage", () => {
 
     render(<WorkOrdersPage />);
     expect(screen.getByRole("heading", { name: "Work Orders" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "New Work Order" })).toHaveAttribute(
-      "href",
-      "/work-orders/new",
-    );
+    screen.getByRole("button", { name: "New Work Order" }).click();
+    expect(pushMock).toHaveBeenCalledWith("/work-orders/new");
 
     await waitFor(() => {
       expect(screen.getByText("No work orders yet")).toBeInTheDocument();

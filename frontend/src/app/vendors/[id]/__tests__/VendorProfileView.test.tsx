@@ -58,9 +58,53 @@ describe("VendorProfileView", () => {
     expect(screen.getByText(/4.5/)).toBeInTheDocument();
   });
 
-  it("sends a contact request and renders the resulting communication event", async () => {
+  it("requires a work order to be selected before contacting a vendor directly", async () => {
     vi.mocked(getVendor).mockResolvedValue(vendor);
     vi.mocked(getWorkOrders).mockResolvedValue([]);
+
+    render(<VendorProfileView vendorId="vendor_1" />);
+    await screen.findByRole("heading", { name: "Acme Plumbing" });
+
+    fireEvent.click(screen.getByRole("button", { name: /send email/i }));
+
+    expect(
+      await screen.findByText(/select a work order before contacting this vendor/i),
+    ).toBeInTheDocument();
+    expect(contactVendor).not.toHaveBeenCalled();
+  });
+
+  it("sends a contact request and renders the resulting communication event", async () => {
+    vi.mocked(getVendor).mockResolvedValue(vendor);
+    vi.mocked(getWorkOrders).mockResolvedValue([
+      {
+        id: "wo_1",
+        user_id: "user_1",
+        company_id: null,
+        facility_id: null,
+        title: "Fix leak",
+        description: "Leak",
+        trade: "Plumbing",
+        task_type: null,
+        status: "collecting_bids",
+        requested_start_at: null,
+        target_budget_cents: null,
+        max_price_cents: null,
+        bid_deadline_at: null,
+        urgency: null,
+        bidding_mode: null,
+        required_arrival_window_start: null,
+        required_arrival_window_end: null,
+        selected_vendor_id: null,
+        accepted_bid_id: null,
+        accepted_price_cents: null,
+        scheduled_start_at: null,
+        confirmation_status: null,
+        completed_vendor_quality_score: null,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    vi.mocked(getWorkOrderCandidates).mockResolvedValue([]);
     vi.mocked(contactVendor).mockResolvedValue({
       id: "event_1",
       work_order_id: "wo_1",
@@ -77,12 +121,16 @@ describe("VendorProfileView", () => {
     render(<VendorProfileView vendorId="vendor_1" />);
     await screen.findByRole("heading", { name: "Acme Plumbing" });
 
+    fireEvent.change(screen.getByLabelText("Work order context"), {
+      target: { value: "wo_1" },
+    });
+
     fireEvent.click(screen.getByRole("button", { name: /send email/i }));
 
     await waitFor(() => {
       expect(contactVendor).toHaveBeenCalledWith("vendor_1", {
         channel: "email",
-        work_order_id: "",
+        work_order_id: "wo_1",
         body: "Outreach via email regarding work order.",
       });
     });

@@ -41,6 +41,7 @@ export function ChatInput() {
       }
       setMessages((prev) => [...prev, { role: "assistant", body: result.response }]);
     } catch {
+      setValue(message);
       setError("Something went wrong sending your message. Please try again.");
     } finally {
       setIsLoading(false);
@@ -82,7 +83,7 @@ export function ChatInput() {
         <textarea
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          placeholder="Describe your work order and Tavi will finding matching vendors for your needs"
+          placeholder="Describe your work order and Tavi will find matching vendors for your needs"
           rows={3}
           className="w-full resize-none rounded-lg border border-tavi-navy/20 px-4 py-3 text-sm text-tavi-navy placeholder:text-tavi-navy/40 focus:border-tavi-indigo focus:outline-none"
         />

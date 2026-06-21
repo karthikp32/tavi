@@ -27,6 +27,7 @@ export default function VendorsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isCancelled = false;
     const filters: VendorSearchFilters = {};
     if (city) filters.city = city;
     if (trade) filters.trade = trade;
@@ -35,9 +36,18 @@ export default function VendorsPage() {
     setIsLoading(true);
     setError(null);
     getVendors(filters)
-      .then(setVendors)
-      .catch(() => setError("Could not load vendors. Please try again."))
-      .finally(() => setIsLoading(false));
+      .then((result) => {
+        if (!isCancelled) setVendors(result);
+      })
+      .catch(() => {
+        if (!isCancelled) setError("Could not load vendors. Please try again.");
+      })
+      .finally(() => {
+        if (!isCancelled) setIsLoading(false);
+      });
+    return () => {
+      isCancelled = true;
+    };
   }, [city, trade, minRating]);
 
   const columns: TableColumn<Vendor>[] = [

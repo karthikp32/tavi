@@ -403,6 +403,16 @@ class WorkOrderCreate(WorkOrderBase):
             raise ValueError(f"Invalid confirmation_status. Must be one of {CONFIRMATION_STATUSES}")
         return v
 
+    @model_validator(mode="after")
+    def validate_arrival_window(self) -> "WorkOrderCreate":
+        if (
+            self.required_arrival_window_start is not None
+            and self.required_arrival_window_end is not None
+            and self.required_arrival_window_start > self.required_arrival_window_end
+        ):
+            raise ValueError("required_arrival_window_start must be before or equal to required_arrival_window_end")
+        return self
+
 class WorkOrderUpdate(AppBaseModel):
     user_id: Optional[str] = None
     company_id: Optional[str] = None
@@ -461,6 +471,16 @@ class WorkOrderUpdate(AppBaseModel):
         if v is not None and v not in CONFIRMATION_STATUSES:
             raise ValueError(f"Invalid confirmation_status. Must be one of {CONFIRMATION_STATUSES}")
         return v
+
+    @model_validator(mode="after")
+    def validate_arrival_window(self) -> "WorkOrderUpdate":
+        if (
+            self.required_arrival_window_start is not None
+            and self.required_arrival_window_end is not None
+            and self.required_arrival_window_start > self.required_arrival_window_end
+        ):
+            raise ValueError("required_arrival_window_start must be before or equal to required_arrival_window_end")
+        return self
 
 class WorkOrderOut(WorkOrderBase):
     id: str

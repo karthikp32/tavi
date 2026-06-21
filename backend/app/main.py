@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from decimal import Decimal
@@ -22,7 +22,10 @@ def migrate_schema():
         existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(work_orders)").fetchall()}
         for name, col_type in new_columns.items():
             if name not in existing:
-                conn.exec_driver_sql(f"ALTER TABLE work_orders ADD COLUMN {name} {col_type}")
+                try:
+                    conn.exec_driver_sql(f"ALTER TABLE work_orders ADD COLUMN {name} {col_type}")
+                except OperationalError:
+                    pass
         conn.commit()
 
 def initialize_database():

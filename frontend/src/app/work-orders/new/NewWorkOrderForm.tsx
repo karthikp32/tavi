@@ -65,6 +65,13 @@ export function NewWorkOrderForm() {
       if (!newFacilityName.trim()) nextErrors.newFacilityName = "Facility name is required";
       if (!newFacilityAddress.trim()) nextErrors.newFacilityAddress = "Facility address is required";
     }
+    if (
+      arrivalWindowStart &&
+      arrivalWindowEnd &&
+      new Date(arrivalWindowEnd) < new Date(arrivalWindowStart)
+    ) {
+      nextErrors.arrivalWindowEnd = "Arrival window end must be after the start";
+    }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -306,7 +313,11 @@ export function NewWorkOrderForm() {
         />
       </FormField>
 
-      <FormField label="Required arrival window end" htmlFor="arrival_window_end">
+      <FormField
+        label="Required arrival window end"
+        htmlFor="arrival_window_end"
+        error={errors.arrivalWindowEnd}
+      >
         <input
           id="arrival_window_end"
           name="arrival_window_end"

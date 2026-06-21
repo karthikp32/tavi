@@ -61,7 +61,10 @@ export function WorkOrderReviewView({ workOrderId }: WorkOrderReviewViewProps) {
         ]);
 
         const uniqueVendorIds = Array.from(new Set(nextCandidates.map((c) => c.vendor_id)));
-        const vendors = await Promise.all(uniqueVendorIds.map((id) => getVendor(id)));
+        const vendorResults = await Promise.allSettled(uniqueVendorIds.map((id) => getVendor(id)));
+        const vendors = vendorResults
+          .filter((result): result is PromiseFulfilledResult<Vendor> => result.status === "fulfilled")
+          .map((result) => result.value);
         const nextVendorsById = Object.fromEntries(vendors.map((vendor) => [vendor.id, vendor]));
 
         if (!isCancelled) {
