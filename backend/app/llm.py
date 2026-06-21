@@ -1,12 +1,18 @@
-import os
 import json
 import logging
+import os
+import threading
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Dict, Any, Optional
-from fastapi import HTTPException
+from typing import Any, Dict, List, Optional
+
 import httpx
+from dotenv import load_dotenv
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
+
+# Load environment variables from .env file
+load_dotenv()
 
 from . import models
 from .database import SessionLocal
@@ -26,7 +32,7 @@ SYSTEM_PROMPT = """You are Tavi's AI facility-manager assistant, a command cente
 Your goal is to assist the user (a facility manager) in the complete lifecycle of a work order: intake, discovery, contact, bidding, selection, and awarding.
 
 Important guidelines you MUST follow:
-1. Act as Tavi's facility-manager assistant. Use professional, operational, and polite language.
+1. Act as Tavi's facility-manager assistant. Use professional, operational, and polite language. Be friendly and write messages that are easy to read, easy to understand, structured yet human-like.
 2. Terminology: Always use the word "vendor" (singular/plural) to describe service providers. Never use the word "worker".
 3. Intake clarification: Before creating a work order, you MUST ask clarifying questions to gather any missing information from:
    - trade
@@ -50,6 +56,9 @@ Important guidelines you MUST follow:
    - Base your recommendation on bid amount, arrival window, quality/availability/risk scores, and license/insurance status.
 7. Mock Demo Environment:
    - This is a mock demo context. Never claim that a real email, text message, or phone call was sent to a live vendor beyond this simulated environment. Make it clear that outreach actions (like send_vendor_email) are simulated.
+
+Rules of What Not to Do:
+1. Don't use any em dashes
 """
 
 # ----------------- Tool Definitions -----------------
@@ -63,20 +72,51 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "The ID of the user creating the work order. Use the default seeded user id (f3089d70-d4cf-4ca6-bdfd-7c22718e2036)."},
-                    "facility_id": {"type": "string", "description": "The ID of the facility. Optional if unknown."},
-                    "company_id": {"type": "string", "description": "The ID of the company. Optional."},
-                    "title": {"type": "string", "description": "Brief title for the work order."},
-                    "description": {"type": "string", "description": "Detailed description of the work order scope."},
-                    "trade": {"type": "string", "description": "The trade (e.g. Lawncare, Plumbing, Electrical, HVAC, Cleaning, General maintenance)."},
-                    "task_type": {"type": "string", "description": "The specific task type (e.g. leak_repair, install, maintenance, repair)."},
-                    "status": {"type": "string", "enum": ["draft", "ready_for_vendor_discovery"], "default": "draft"},
-                    "urgency": {"type": "string", "enum": ["low", "normal", "high", "emergency"]},
-                    "target_budget_cents": {"type": "integer", "description": "Target budget in cents."}
+                    "user_id": {
+                        "type": "string",
+                        "description": "The ID of the user creating the work order. Use the default seeded user id (f3089d70-d4cf-4ca6-bdfd-7c22718e2036).",
+                    },
+                    "facility_id": {
+                        "type": "string",
+                        "description": "The ID of the facility. Optional if unknown.",
+                    },
+                    "company_id": {
+                        "type": "string",
+                        "description": "The ID of the company. Optional.",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Brief title for the work order.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Detailed description of the work order scope.",
+                    },
+                    "trade": {
+                        "type": "string",
+                        "description": "The trade (e.g. Lawncare, Plumbing, Electrical, HVAC, Cleaning, General maintenance).",
+                    },
+                    "task_type": {
+                        "type": "string",
+                        "description": "The specific task type (e.g. leak_repair, install, maintenance, repair).",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["draft", "ready_for_vendor_discovery"],
+                        "default": "draft",
+                    },
+                    "urgency": {
+                        "type": "string",
+                        "enum": ["low", "normal", "high", "emergency"],
+                    },
+                    "target_budget_cents": {
+                        "type": "integer",
+                        "description": "Target budget in cents.",
+                    },
                 },
-                "required": ["user_id", "title", "description", "trade"]
-            }
-        }
+                "required": ["user_id", "title", "description", "trade"],
+            },
+        },
     },
     {
         "type": "function",
@@ -91,19 +131,28 @@ TOOLS = [
                     "description": {"type": "string"},
                     "trade": {"type": "string"},
                     "task_type": {"type": "string"},
-                    "status": {"type": "string", "description": "New status for the work order."},
+                    "status": {
+                        "type": "string",
+                        "description": "New status for the work order.",
+                    },
                     "target_budget_cents": {"type": "integer"},
                     "max_price_cents": {"type": "integer"},
                     "urgency": {"type": "string"},
                     "selected_vendor_id": {"type": "string"},
                     "accepted_bid_id": {"type": "string"},
                     "accepted_price_cents": {"type": "integer"},
-                    "scheduled_start_at": {"type": "string", "description": "ISO format string"},
-                    "confirmation_status": {"type": "string", "enum": ["pending", "confirmed", "failed", "cancelled"]}
+                    "scheduled_start_at": {
+                        "type": "string",
+                        "description": "ISO format string",
+                    },
+                    "confirmation_status": {
+                        "type": "string",
+                        "enum": ["pending", "confirmed", "failed", "cancelled"],
+                    },
                 },
-                "required": ["id"]
-            }
-        }
+                "required": ["id"],
+            },
+        },
     },
     {
         "type": "function",
@@ -115,9 +164,9 @@ TOOLS = [
                 "properties": {
                     "id": {"type": "string", "description": "The work order UUID."}
                 },
-                "required": ["id"]
-            }
-        }
+                "required": ["id"],
+            },
+        },
     },
     {
         "type": "function",
@@ -127,11 +176,14 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "work_order_id": {"type": "string", "description": "The work order UUID."}
+                    "work_order_id": {
+                        "type": "string",
+                        "description": "The work order UUID.",
+                    }
                 },
-                "required": ["work_order_id"]
-            }
-        }
+                "required": ["work_order_id"],
+            },
+        },
     },
     {
         "type": "function",
@@ -141,11 +193,14 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "work_order_id": {"type": "string", "description": "The work order UUID."}
+                    "work_order_id": {
+                        "type": "string",
+                        "description": "The work order UUID.",
+                    }
                 },
-                "required": ["work_order_id"]
-            }
-        }
+                "required": ["work_order_id"],
+            },
+        },
     },
     {
         "type": "function",
@@ -158,17 +213,41 @@ TOOLS = [
                     "city": {"type": "string"},
                     "trade": {"type": "string"},
                     "task_type": {"type": "string"},
-                    "target_budget": {"type": "integer", "description": "Optional budget in cents to calculate price fit against."},
+                    "target_budget": {
+                        "type": "integer",
+                        "description": "Optional budget in cents to calculate price fit against.",
+                    },
                     "rating": {"type": "number"},
-                    "license_status": {"type": "string", "enum": ["unknown", "verified", "unverified", "expired", "not_required"]},
-                    "insurance_status": {"type": "string", "enum": ["unknown", "verified", "unverified", "expired", "not_required"]},
+                    "license_status": {
+                        "type": "string",
+                        "enum": [
+                            "unknown",
+                            "verified",
+                            "unverified",
+                            "expired",
+                            "not_required",
+                        ],
+                    },
+                    "insurance_status": {
+                        "type": "string",
+                        "enum": [
+                            "unknown",
+                            "verified",
+                            "unverified",
+                            "expired",
+                            "not_required",
+                        ],
+                    },
                     "quality_score": {"type": "number"},
                     "availability_score": {"type": "number"},
                     "risk_score": {"type": "number"},
-                    "min_price_fit": {"type": "number", "description": "Minimum score from 0.0 to 1.0"}
-                }
-            }
-        }
+                    "min_price_fit": {
+                        "type": "number",
+                        "description": "Minimum score from 0.0 to 1.0",
+                    },
+                },
+            },
+        },
     },
     {
         "type": "function",
@@ -179,11 +258,11 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "work_order_id": {"type": "string"},
-                    "vendor_id": {"type": "string"}
+                    "vendor_id": {"type": "string"},
                 },
-                "required": ["work_order_id", "vendor_id"]
-            }
-        }
+                "required": ["work_order_id", "vendor_id"],
+            },
+        },
     },
     {
         "type": "function",
@@ -196,11 +275,14 @@ TOOLS = [
                     "vendor_id": {"type": "string"},
                     "work_order_id": {"type": "string"},
                     "channel": {"type": "string", "enum": ["email", "sms", "phone"]},
-                    "body": {"type": "string", "description": "The message text sent to the vendor."}
+                    "body": {
+                        "type": "string",
+                        "description": "The message text sent to the vendor.",
+                    },
                 },
-                "required": ["vendor_id", "work_order_id", "channel", "body"]
-            }
-        }
+                "required": ["vendor_id", "work_order_id", "channel", "body"],
+            },
+        },
     },
     {
         "type": "function",
@@ -210,12 +292,15 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "candidate_id": {"type": "string", "description": "The candidate UUID."},
-                    "body": {"type": "string", "description": "The email body."}
+                    "candidate_id": {
+                        "type": "string",
+                        "description": "The candidate UUID.",
+                    },
+                    "body": {"type": "string", "description": "The email body."},
                 },
-                "required": ["candidate_id", "body"]
-            }
-        }
+                "required": ["candidate_id", "body"],
+            },
+        },
     },
     {
         "type": "function",
@@ -225,12 +310,15 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "candidate_id": {"type": "string", "description": "The candidate UUID."},
-                    "body": {"type": "string", "description": "The text message body."}
+                    "candidate_id": {
+                        "type": "string",
+                        "description": "The candidate UUID.",
+                    },
+                    "body": {"type": "string", "description": "The text message body."},
                 },
-                "required": ["candidate_id", "body"]
-            }
-        }
+                "required": ["candidate_id", "body"],
+            },
+        },
     },
     {
         "type": "function",
@@ -240,12 +328,18 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "candidate_id": {"type": "string", "description": "The candidate UUID."},
-                    "body": {"type": "string", "description": "Notes/summary of the phone call."}
+                    "candidate_id": {
+                        "type": "string",
+                        "description": "The candidate UUID.",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Notes/summary of the phone call.",
+                    },
                 },
-                "required": ["candidate_id", "body"]
-            }
-        }
+                "required": ["candidate_id", "body"],
+            },
+        },
     },
     {
         "type": "function",
@@ -257,15 +351,38 @@ TOOLS = [
                 "properties": {
                     "work_order_id": {"type": "string"},
                     "work_order_candidate_id": {"type": "string"},
-                    "amount_cents": {"type": "integer", "description": "Bid amount in cents."},
-                    "arrival_window_start": {"type": "string", "description": "ISO format string"},
-                    "arrival_window_end": {"type": "string", "description": "ISO format string"},
+                    "amount_cents": {
+                        "type": "integer",
+                        "description": "Bid amount in cents.",
+                    },
+                    "arrival_window_start": {
+                        "type": "string",
+                        "description": "ISO format string",
+                    },
+                    "arrival_window_end": {
+                        "type": "string",
+                        "description": "ISO format string",
+                    },
                     "scope_notes": {"type": "string"},
-                    "status": {"type": "string", "enum": ["submitted", "accepted", "rejected", "withdrawn", "expired"], "default": "submitted"}
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "submitted",
+                            "accepted",
+                            "rejected",
+                            "withdrawn",
+                            "expired",
+                        ],
+                        "default": "submitted",
+                    },
                 },
-                "required": ["work_order_id", "work_order_candidate_id", "amount_cents"]
-            }
-        }
+                "required": [
+                    "work_order_id",
+                    "work_order_candidate_id",
+                    "amount_cents",
+                ],
+            },
+        },
     },
     {
         "type": "function",
@@ -280,15 +397,25 @@ TOOLS = [
                     "arrival_window_start": {"type": "string"},
                     "arrival_window_end": {"type": "string"},
                     "scope_notes": {"type": "string"},
-                    "status": {"type": "string", "enum": ["submitted", "accepted", "rejected", "withdrawn", "expired"]}
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "submitted",
+                            "accepted",
+                            "rejected",
+                            "withdrawn",
+                            "expired",
+                        ],
+                    },
                 },
-                "required": ["id"]
-            }
-        }
-    }
+                "required": ["id"],
+            },
+        },
+    },
 ]
 
 # ----------------- Serialization helper -----------------
+
 
 def serialize_model(obj) -> Dict[str, Any]:
     if obj is None:
@@ -304,9 +431,11 @@ def serialize_model(obj) -> Dict[str, Any]:
             res[col.name] = val
     return res
 
+
 # ----------------- Tool Dispatcher Implementation -----------------
 
 # ----------------- Separate Tool Functions -----------------
+
 
 def tool_create_work_order(
     db: Session,
@@ -320,7 +449,7 @@ def tool_create_work_order(
     status: str = "draft",
     urgency: Optional[str] = None,
     target_budget_cents: Optional[int] = None,
-    **kwargs
+    **kwargs,
 ) -> Dict[str, Any]:
     db_wo = models.WorkOrder(
         user_id=user_id,
@@ -332,13 +461,14 @@ def tool_create_work_order(
         task_type=task_type,
         status=status,
         urgency=urgency,
-        target_budget_cents=target_budget_cents
+        target_budget_cents=target_budget_cents,
     )
     db.add(db_wo)
     db.commit()
     db.refresh(db_wo)
     create_wo_snapshot(db, db_wo, actor_type="agent", actor_name="Tavi Tool Agent")
     return serialize_model(db_wo)
+
 
 def tool_update_work_order(
     db: Session,
@@ -356,23 +486,35 @@ def tool_update_work_order(
     accepted_price_cents: Optional[int] = None,
     scheduled_start_at: Optional[str] = None,
     confirmation_status: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ) -> Dict[str, Any]:
     # Extract passed non-None parameters from local scope and merge with kwargs
-    updates = {k: v for k, v in locals().items() if k not in ("db", "id", "kwargs") and v is not None}
+    updates = {
+        k: v
+        for k, v in locals().items()
+        if k not in ("db", "id", "kwargs") and v is not None
+    }
     updates.update(kwargs)
 
     wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
     if not wo:
         return {"error": f"Work order {id} not found"}
-        
+
     important_fields = {
-        "status", "title", "description", "trade", "task_type",
-        "target_budget_cents", "max_price_cents", "selected_vendor_id",
-        "accepted_bid_id", "accepted_price_cents", "scheduled_start_at",
-        "completed_vendor_quality_score"
+        "status",
+        "title",
+        "description",
+        "trade",
+        "task_type",
+        "target_budget_cents",
+        "max_price_cents",
+        "selected_vendor_id",
+        "accepted_bid_id",
+        "accepted_price_cents",
+        "scheduled_start_at",
+        "completed_vendor_quality_score",
     }
-    
+
     changed = False
     for key, val in updates.items():
         if key == "scheduled_start_at" and val:
@@ -383,48 +525,72 @@ def tool_update_work_order(
             if curr != val:
                 changed = True
         setattr(wo, key, val)
-            
+
     wo.updated_at = datetime.utcnow()
     if changed:
         create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
     else:
         db.commit()
     db.refresh(wo)
-        
+
     return serialize_model(wo)
+
 
 def tool_get_work_order(db: Session, id: str, **kwargs) -> Dict[str, Any]:
     wo = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
     if not wo:
         return {"error": f"Work order {id} not found"}
     res = serialize_model(wo)
-    
+
     # Counts
-    res["candidate_count"] = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.work_order_id == id).count()
-    res["bid_count"] = db.query(models.Bid).filter(models.Bid.work_order_id == id).count()
-    res["communication_event_count"] = db.query(models.CommunicationEvent).filter(models.CommunicationEvent.work_order_id == id).count()
-    
+    res["candidate_count"] = (
+        db.query(models.WorkOrderCandidate)
+        .filter(models.WorkOrderCandidate.work_order_id == id)
+        .count()
+    )
+    res["bid_count"] = (
+        db.query(models.Bid).filter(models.Bid.work_order_id == id).count()
+    )
+    res["communication_event_count"] = (
+        db.query(models.CommunicationEvent)
+        .filter(models.CommunicationEvent.work_order_id == id)
+        .count()
+    )
+
     # Related object metadata
     res["facility_name"] = wo.facility.name if wo.facility else None
     res["facility_address"] = wo.facility.address if wo.facility else None
     res["facility_city"] = wo.facility.city if wo.facility else None
-    res["selected_vendor_name"] = wo.selected_vendor.name if wo.selected_vendor else None
+    res["selected_vendor_name"] = (
+        wo.selected_vendor.name if wo.selected_vendor else None
+    )
     res["user_name"] = wo.user.name if wo.user else None
-    
+
     return res
 
-def tool_get_work_order_bids(db: Session, work_order_id: str, **kwargs) -> List[Dict[str, Any]]:
+
+def tool_get_work_order_bids(
+    db: Session, work_order_id: str, **kwargs
+) -> List[Dict[str, Any]]:
     bids = db.query(models.Bid).filter(models.Bid.work_order_id == work_order_id).all()
     return [serialize_model(b) for b in bids]
 
-def tool_get_work_order_candidates(db: Session, work_order_id: str, **kwargs) -> List[Dict[str, Any]]:
-    candidates = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.work_order_id == work_order_id).all()
+
+def tool_get_work_order_candidates(
+    db: Session, work_order_id: str, **kwargs
+) -> List[Dict[str, Any]]:
+    candidates = (
+        db.query(models.WorkOrderCandidate)
+        .filter(models.WorkOrderCandidate.work_order_id == work_order_id)
+        .all()
+    )
     res = []
     for c in candidates:
         c_dict = serialize_model(c)
         c_dict["vendor"] = serialize_model(c.vendor)
         res.append(c_dict)
     return res
+
 
 def tool_search_vendors(
     db: Session,
@@ -439,11 +605,11 @@ def tool_search_vendors(
     availability_score: Optional[float] = None,
     risk_score: Optional[float] = None,
     min_price_fit: Optional[float] = None,
-    **kwargs
+    **kwargs,
 ) -> Any:
     if target_budget is not None and target_budget <= 0:
         return {"error": "target_budget must be greater than 0"}
-        
+
     query = db.query(models.Vendor)
     if city:
         query = query.filter(models.Vendor.city.ilike(city))
@@ -461,23 +627,27 @@ def tool_search_vendors(
         query = query.filter(models.Vendor.availability_score >= availability_score)
     if risk_score is not None:
         query = query.filter(models.Vendor.risk_score <= risk_score)
-        
+
     vendors = query.all()
-    
+
     if trade and city:
-        stats = db.query(models.VendorTaskStat).filter(
-            models.VendorTaskStat.trade.ilike(trade),
-            models.VendorTaskStat.city.ilike(city)
-        ).all()
+        stats = (
+            db.query(models.VendorTaskStat)
+            .filter(
+                models.VendorTaskStat.trade.ilike(trade),
+                models.VendorTaskStat.city.ilike(city),
+            )
+            .all()
+        )
         if task_type:
             stats = [s for s in stats if s.task_type.lower() == task_type.lower()]
-            
+
         stats_by_vendor = {s.vendor_id: s.median_price_cents for s in stats}
-        
+
         avg_median = 0
         if stats_by_vendor and target_budget is None:
             avg_median = sum(stats_by_vendor.values()) / len(stats_by_vendor)
-            
+
         filtered = []
         for v in vendors:
             median_price = stats_by_vendor.get(v.id)
@@ -488,59 +658,85 @@ def tool_search_vendors(
                     if median_price <= target_budget:
                         price_fit = 1.0
                     else:
-                        price_fit = float(max(Decimal("0.0"), Decimal("1.0") - Decimal(median_price - target_budget) / Decimal(target_budget)))
+                        price_fit = float(
+                            max(
+                                Decimal("0.0"),
+                                Decimal("1.0")
+                                - Decimal(median_price - target_budget)
+                                / Decimal(target_budget),
+                            )
+                        )
                 else:
                     if avg_median == 0:
                         price_fit = 1.0
                     elif median_price <= avg_median:
                         price_fit = 1.0
                     else:
-                        price_fit = float(max(Decimal("0.0"), Decimal("1.0") - Decimal(median_price - avg_median) / Decimal(avg_median)))
-            
+                        price_fit = float(
+                            max(
+                                Decimal("0.0"),
+                                Decimal("1.0")
+                                - Decimal(median_price - avg_median)
+                                / Decimal(avg_median),
+                            )
+                        )
+
             v_dict = serialize_model(v)
             v_dict["price_fit"] = price_fit
-            
+
             if min_price_fit is not None:
                 if price_fit is None or price_fit < min_price_fit:
                     continue
             filtered.append(v_dict)
         return filtered
-        
+
     if min_price_fit is not None:
         return []
-        
+
     return [serialize_model(v) for v in vendors]
 
-def tool_create_work_order_candidate(db: Session, work_order_id: str, vendor_id: str, **kwargs) -> Dict[str, Any]:
-    existing = db.query(models.WorkOrderCandidate).filter(
-        models.WorkOrderCandidate.work_order_id == work_order_id,
-        models.WorkOrderCandidate.vendor_id == vendor_id
-    ).first()
+
+def tool_create_work_order_candidate(
+    db: Session, work_order_id: str, vendor_id: str, **kwargs
+) -> Dict[str, Any]:
+    existing = (
+        db.query(models.WorkOrderCandidate)
+        .filter(
+            models.WorkOrderCandidate.work_order_id == work_order_id,
+            models.WorkOrderCandidate.vendor_id == vendor_id,
+        )
+        .first()
+    )
     if existing:
         return serialize_model(existing)
-        
+
     c = models.WorkOrderCandidate(
-        work_order_id=work_order_id,
-        vendor_id=vendor_id,
-        status="discovered"
+        work_order_id=work_order_id, vendor_id=vendor_id, status="discovered"
     )
     db.add(c)
     db.commit()
     db.refresh(c)
     return serialize_model(c)
 
-def tool_contact_vendor(db: Session, vendor_id: str, work_order_id: str, channel: str, body: str, **kwargs) -> Dict[str, Any]:
-    candidate = db.query(models.WorkOrderCandidate).filter(
-        models.WorkOrderCandidate.work_order_id == work_order_id,
-        models.WorkOrderCandidate.vendor_id == vendor_id
-    ).first()
+
+def tool_contact_vendor(
+    db: Session, vendor_id: str, work_order_id: str, channel: str, body: str, **kwargs
+) -> Dict[str, Any]:
+    candidate = (
+        db.query(models.WorkOrderCandidate)
+        .filter(
+            models.WorkOrderCandidate.work_order_id == work_order_id,
+            models.WorkOrderCandidate.vendor_id == vendor_id,
+        )
+        .first()
+    )
     if not candidate:
         candidate = models.WorkOrderCandidate(
             work_order_id=work_order_id,
             vendor_id=vendor_id,
             status="contact_pending",
             last_contacted_at=datetime.utcnow(),
-            next_action="awaiting response"
+            next_action="awaiting response",
         )
         db.add(candidate)
         db.commit()
@@ -550,7 +746,7 @@ def tool_contact_vendor(db: Session, vendor_id: str, work_order_id: str, channel
         candidate.last_contacted_at = datetime.utcnow()
         candidate.next_action = "awaiting response"
         db.commit()
-        
+
     event = models.CommunicationEvent(
         work_order_id=work_order_id,
         work_order_candidate_id=candidate.id,
@@ -561,23 +757,30 @@ def tool_contact_vendor(db: Session, vendor_id: str, work_order_id: str, channel
         sender_id=kwargs.get("sender_id"),
         sender_type=kwargs.get("sender_type", "agent"),
         body=body,
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
     )
     db.add(event)
     db.commit()
     db.refresh(event)
     return serialize_model(event)
 
-def _send_outbound_communication(db: Session, candidate_id: str, channel: str, body: str, **kwargs) -> Dict[str, Any]:
-    candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == candidate_id).first()
+
+def _send_outbound_communication(
+    db: Session, candidate_id: str, channel: str, body: str, **kwargs
+) -> Dict[str, Any]:
+    candidate = (
+        db.query(models.WorkOrderCandidate)
+        .filter(models.WorkOrderCandidate.id == candidate_id)
+        .first()
+    )
     if not candidate:
         return {"error": f"Candidate {candidate_id} not found"}
-        
+
     candidate.status = "contacted"
     candidate.last_contacted_at = datetime.utcnow()
     candidate.next_action = "awaiting response"
     db.commit()
-    
+
     event = models.CommunicationEvent(
         work_order_id=candidate.work_order_id,
         work_order_candidate_id=candidate.id,
@@ -588,21 +791,31 @@ def _send_outbound_communication(db: Session, candidate_id: str, channel: str, b
         sender_id=kwargs.get("sender_id"),
         sender_type=kwargs.get("sender_type", "agent"),
         body=body,
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
     )
     db.add(event)
     db.commit()
     db.refresh(event)
     return serialize_model(event)
 
-def tool_send_vendor_email(db: Session, candidate_id: str, body: str, **kwargs) -> Dict[str, Any]:
+
+def tool_send_vendor_email(
+    db: Session, candidate_id: str, body: str, **kwargs
+) -> Dict[str, Any]:
     return _send_outbound_communication(db, candidate_id, "email", body, **kwargs)
 
-def tool_send_vendor_text(db: Session, candidate_id: str, body: str, **kwargs) -> Dict[str, Any]:
+
+def tool_send_vendor_text(
+    db: Session, candidate_id: str, body: str, **kwargs
+) -> Dict[str, Any]:
     return _send_outbound_communication(db, candidate_id, "sms", body, **kwargs)
 
-def tool_log_vendor_call(db: Session, candidate_id: str, body: str, **kwargs) -> Dict[str, Any]:
+
+def tool_log_vendor_call(
+    db: Session, candidate_id: str, body: str, **kwargs
+) -> Dict[str, Any]:
     return _send_outbound_communication(db, candidate_id, "phone", body, **kwargs)
+
 
 def tool_create_bid(
     db: Session,
@@ -613,39 +826,54 @@ def tool_create_bid(
     arrival_window_end: Optional[str] = None,
     scope_notes: Optional[str] = None,
     status: str = "submitted",
-    **kwargs
+    **kwargs,
 ) -> Dict[str, Any]:
-    candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == work_order_candidate_id).first()
+    candidate = (
+        db.query(models.WorkOrderCandidate)
+        .filter(models.WorkOrderCandidate.id == work_order_candidate_id)
+        .first()
+    )
     if not candidate:
         return {"error": f"Candidate {work_order_candidate_id} not found"}
     if candidate.work_order_id != work_order_id:
         return {"error": "Candidate does not belong to this work order"}
-        
+
     db_bid = models.Bid(
         work_order_id=work_order_id,
         work_order_candidate_id=work_order_candidate_id,
         amount_cents=amount_cents,
-        arrival_window_start=datetime.fromisoformat(arrival_window_start.replace("Z", "")) if arrival_window_start else None,
-        arrival_window_end=datetime.fromisoformat(arrival_window_end.replace("Z", "")) if arrival_window_end else None,
+        arrival_window_start=datetime.fromisoformat(
+            arrival_window_start.replace("Z", "")
+        )
+        if arrival_window_start
+        else None,
+        arrival_window_end=datetime.fromisoformat(arrival_window_end.replace("Z", ""))
+        if arrival_window_end
+        else None,
         scope_notes=scope_notes,
         status=status,
         submitted_at=datetime.utcnow(),
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
     )
     db.add(db_bid)
-    
+
     candidate.status = "bid_submitted"
     candidate.quoted_price_cents = amount_cents
     if arrival_window_start:
-        candidate.available_start_at = datetime.fromisoformat(arrival_window_start.replace("Z", ""))
+        candidate.available_start_at = datetime.fromisoformat(
+            arrival_window_start.replace("Z", "")
+        )
     if arrival_window_end:
-        candidate.available_end_at = datetime.fromisoformat(arrival_window_end.replace("Z", ""))
-        
+        candidate.available_end_at = datetime.fromisoformat(
+            arrival_window_end.replace("Z", "")
+        )
+
     db.commit()
     db.refresh(db_bid)
-    
+
     update_bidding_mode_if_needed(db, candidate.work_order)
     return serialize_model(db_bid)
+
 
 def tool_update_bid(
     db: Session,
@@ -655,45 +883,54 @@ def tool_update_bid(
     arrival_window_end: Optional[str] = None,
     scope_notes: Optional[str] = None,
     status: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ) -> Dict[str, Any]:
     # Extract passed non-None parameters from local scope and merge with kwargs
-    updates = {k: v for k, v in locals().items() if k not in ("db", "id", "kwargs") and v is not None}
+    updates = {
+        k: v
+        for k, v in locals().items()
+        if k not in ("db", "id", "kwargs") and v is not None
+    }
     updates.update(kwargs)
 
     db_bid = db.query(models.Bid).filter(models.Bid.id == id).first()
     if not db_bid:
         return {"error": f"Bid {id} not found"}
-        
+
     for key, val in updates.items():
         if key in ("arrival_window_start", "arrival_window_end") and val:
             if isinstance(val, str):
                 val = datetime.fromisoformat(val.replace("Z", ""))
         setattr(db_bid, key, val)
-            
+
     if updates.get("status") == "accepted":
         wo = db_bid.work_order
         wo.status = "awarded"
         wo.accepted_bid_id = db_bid.id
         wo.accepted_price_cents = db_bid.amount_cents
         wo.selected_vendor_id = db_bid.candidate.vendor_id
-        
+
         db_bid.candidate.status = "selected"
-        
-        other = db.query(models.WorkOrderCandidate).filter(
-            models.WorkOrderCandidate.work_order_id == wo.id,
-            models.WorkOrderCandidate.id != db_bid.work_order_candidate_id
-        ).all()
+
+        other = (
+            db.query(models.WorkOrderCandidate)
+            .filter(
+                models.WorkOrderCandidate.work_order_id == wo.id,
+                models.WorkOrderCandidate.id != db_bid.work_order_candidate_id,
+            )
+            .all()
+        )
         for oc in other:
             oc.status = "not_selected"
-            
+
         create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
     else:
         db.commit()
-        
+
     db.refresh(db_bid)
-        
+
     return serialize_model(db_bid)
+
 
 # ----------------- Tool Dispatcher Implementation -----------------
 
@@ -713,6 +950,7 @@ TOOL_FUNCTIONS = {
     "update_bid": tool_update_bid,
 }
 
+
 def execute_tool(db: Session, name: str, args: Dict[str, Any]) -> Any:
     logger.info(f"Executing tool {name} with args {args}")
     func = TOOL_FUNCTIONS.get(name)
@@ -720,35 +958,140 @@ def execute_tool(db: Session, name: str, args: Dict[str, Any]) -> Any:
         raise ValueError(f"Unknown tool function name: {name}")
     return func(db, **args)
 
+
 # ----------------- OpenRouter Client & Execution Loop -----------------
 
-def run_llm_conversation(db: Session, chat_session: models.ChatSession, user_message: str) -> Dict[str, Any]:
+class LlmRequestCancelled(Exception):
+    pass
+
+
+def _raise_if_cancelled(cancel_event: Optional[threading.Event]) -> None:
+    if cancel_event and cancel_event.is_set():
+        raise LlmRequestCancelled("LLM request cancelled")
+
+
+def _merge_stream_tool_call(
+    tool_calls: List[Dict[str, Any]], delta_tool_call: Dict[str, Any]
+) -> None:
+    index = delta_tool_call.get("index", len(tool_calls))
+    while len(tool_calls) <= index:
+        tool_calls.append(
+            {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+        )
+
+    tool_call = tool_calls[index]
+    if delta_tool_call.get("id"):
+        tool_call["id"] = delta_tool_call["id"]
+    if delta_tool_call.get("type"):
+        tool_call["type"] = delta_tool_call["type"]
+
+    delta_function = delta_tool_call.get("function") or {}
+    if delta_function.get("name"):
+        tool_call["function"]["name"] = delta_function["name"]
+    if delta_function.get("arguments"):
+        tool_call["function"]["arguments"] += delta_function["arguments"]
+
+
+def _read_streamed_openrouter_message(
+    client: httpx.Client,
+    headers: Dict[str, str],
+    payload: Dict[str, Any],
+    cancel_event: Optional[threading.Event],
+) -> Dict[str, Any]:
+    content_parts: List[str] = []
+    tool_calls: List[Dict[str, Any]] = []
+    request_payload = {**payload, "stream": True}
+
+    with client.stream(
+        "POST", "/chat/completions", headers=headers, json=request_payload
+    ) as res:
+        if res.status_code != 200:
+            try:
+                error_text = res.read().decode("utf-8", errors="replace")
+            except Exception:
+                error_text = getattr(res, "text", "")
+            raise Exception(
+                f"OpenRouter API error (HTTP {res.status_code}): {error_text}"
+            )
+
+        for line in res.iter_lines():
+            if cancel_event and cancel_event.is_set():
+                res.close()
+                raise LlmRequestCancelled("LLM request cancelled")
+            if isinstance(line, bytes):
+                line = line.decode("utf-8")
+            line = line.strip()
+            if not line or line.startswith(":"):
+                continue
+            if not line.startswith("data:"):
+                continue
+
+            data = line.removeprefix("data:").strip()
+            if data == "[DONE]":
+                break
+
+            event = json.loads(data)
+            if event.get("error"):
+                message = event["error"].get("message", "OpenRouter stream error")
+                raise Exception(message)
+
+            choices = event.get("choices") or []
+            if not choices:
+                continue
+
+            delta = choices[0].get("delta") or {}
+            if delta.get("content"):
+                content_parts.append(delta["content"])
+            for delta_tool_call in delta.get("tool_calls") or []:
+                _merge_stream_tool_call(tool_calls, delta_tool_call)
+
+    normalized_tool_calls = [
+        tool_call
+        for tool_call in tool_calls
+        if tool_call.get("id") or tool_call.get("function", {}).get("name")
+    ]
+    return {
+        "role": "assistant",
+        "content": "".join(content_parts) or None,
+        "tool_calls": normalized_tool_calls or None,
+    }
+
+
+def run_llm_conversation(
+    db: Session,
+    chat_session: models.ChatSession,
+    user_message: str,
+    cancel_event: Optional[threading.Event] = None,
+) -> Dict[str, Any]:
     # 1. Save user message to database
     db_msg_user = models.ChatMessage(
         chat_session_id=chat_session.id,
         work_order_id=chat_session.work_order_id,
         role="facility_manager",
         body=user_message,
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
     )
     db.add(db_msg_user)
     chat_session.updated_at = datetime.utcnow()
     db.commit()
 
     # 2. Reconstruct chat history for the LLM
-    history = db.query(models.ChatMessage).filter(
-        models.ChatMessage.chat_session_id == chat_session.id
-    ).order_by(models.ChatMessage.created_at.asc()).all()
+    history = (
+        db.query(models.ChatMessage)
+        .filter(models.ChatMessage.chat_session_id == chat_session.id)
+        .order_by(models.ChatMessage.created_at.asc())
+        .all()
+    )
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for h in history:
         role_map = {
             "facility_manager": "user",
             "assistant": "assistant",
-            "system": "system"
+            "system": "system",
         }
         role = role_map.get(h.role, "user")
-        
+
         # If there are extracted fields, we can attach them, but keeping message body is standard
         msg_content = h.body
         messages.append({"role": role, "content": msg_content})
@@ -758,14 +1101,14 @@ def run_llm_conversation(db: Session, chat_session: models.ChatSession, user_mes
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://tavi.ai",
-        "X-Title": "Tavi Hackathon Demo"
+        "X-Title": "Tavi Hackathon Demo",
     }
 
     payload = {
         "model": OPENROUTER_MODEL,
         "messages": messages,
         "tools": TOOLS,
-        "tool_choice": "auto"
+        "tool_choice": "auto",
     }
 
     # Debug details tracking for tool execution
@@ -773,38 +1116,38 @@ def run_llm_conversation(db: Session, chat_session: models.ChatSession, user_mes
 
     # Check if OPENROUTER_API_KEY is present
     if not OPENROUTER_API_KEY:
-        logger.error("OpenRouter API key is missing. Please set the OPENROUTER_API_KEY environment variable.")
+        logger.error(
+            "OpenRouter API key is missing. Please set the OPENROUTER_API_KEY environment variable."
+        )
         error_msg = "The AI model is currently unavailable because the API key is missing. Please contact your system administrator."
-        
+
         db_msg_assistant = models.ChatMessage(
             chat_session_id=chat_session.id,
             work_order_id=chat_session.work_order_id,
             role="assistant",
             body=error_msg,
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
         )
         db.add(db_msg_assistant)
         chat_session.updated_at = datetime.utcnow()
         db.commit()
-        
+
         return {
             "response": error_msg,
             "chat_session_id": chat_session.id,
             "work_order_id": chat_session.work_order_id,
-            "tool_calls": []
+            "tool_calls": [],
         }
 
     # Multi-turn tool execution loop (runs up to 5 times to avoid infinite loop)
     for turn in range(5):
         try:
+            _raise_if_cancelled(cancel_event)
             with httpx.Client(base_url=OPENROUTER_BASE_URL, timeout=30.0) as client:
-                res = client.post("/chat/completions", headers=headers, json=payload)
-                if res.status_code != 200:
-                    raise Exception(f"OpenRouter API error (HTTP {res.status_code}): {res.text}")
-                    
-                res_data = res.json()
-                choice = res_data["choices"][0]["message"]
-                
+                choice = _read_streamed_openrouter_message(
+                    client, headers, payload, cancel_event
+                )
+
                 # Check if model wants to call tools
                 tool_calls = choice.get("tool_calls")
                 if not tool_calls:
@@ -815,58 +1158,63 @@ def run_llm_conversation(db: Session, chat_session: models.ChatSession, user_mes
                         work_order_id=chat_session.work_order_id,
                         role="assistant",
                         body=assistant_text,
-                        created_at=datetime.utcnow()
+                        created_at=datetime.utcnow(),
                     )
                     db.add(db_msg_assistant)
                     chat_session.updated_at = datetime.utcnow()
                     db.commit()
-                    
+
                     return {
                         "response": assistant_text,
                         "chat_session_id": chat_session.id,
                         "work_order_id": chat_session.work_order_id,
-                        "tool_calls": executed_tools_log
+                        "tool_calls": executed_tools_log,
                     }
-                    
+
                 # Otherwise, execute tools and append responses to messaging context
                 payload["messages"].append(choice)
-                
+
                 for t in tool_calls:
                     tool_name = t["function"]["name"]
                     tool_args = json.loads(t["function"]["arguments"])
-                    
+
                     # Run the tool
                     try:
                         tool_res = execute_tool(db, tool_name, tool_args)
                     except Exception as err:
                         tool_res = {"error": str(err)}
-                        
-                    executed_tools_log.append({
-                        "name": tool_name,
-                        "arguments": tool_args,
-                        "output": tool_res
-                    })
-                    
+
+                    executed_tools_log.append(
+                        {"name": tool_name, "arguments": tool_args, "output": tool_res}
+                    )
+
                     # Append tool result to LLM messages payload
-                    payload["messages"].append({
-                        "role": "tool",
-                        "tool_call_id": t["id"],
-                        "name": tool_name,
-                        "content": json.dumps(tool_res)
-                    })
-                    
+                    payload["messages"].append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": t["id"],
+                            "name": tool_name,
+                            "content": json.dumps(tool_res),
+                        }
+                    )
+
+        except LlmRequestCancelled:
+            logger.info("LLM conversation cancelled")
+            raise
         except Exception as e:
             logger.error(f"Error during LLM conversation: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
-            
+
     # Fallback response
-    fallback_text = "I performed some actions but exceeded the execution limit. Please try again."
+    fallback_text = (
+        "I performed some actions but exceeded the execution limit. Please try again."
+    )
     db_msg_assistant = models.ChatMessage(
         chat_session_id=chat_session.id,
         work_order_id=chat_session.work_order_id,
         role="assistant",
         body=fallback_text,
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
     )
     db.add(db_msg_assistant)
     chat_session.updated_at = datetime.utcnow()
@@ -876,5 +1224,5 @@ def run_llm_conversation(db: Session, chat_session: models.ChatSession, user_mes
         "response": fallback_text,
         "chat_session_id": chat_session.id,
         "work_order_id": chat_session.work_order_id,
-        "tool_calls": executed_tools_log
+        "tool_calls": executed_tools_log,
     }

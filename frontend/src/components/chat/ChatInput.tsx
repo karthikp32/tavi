@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "../ui/Button";
 import { ErrorState } from "../ui/ErrorState";
@@ -18,12 +18,15 @@ export function ChatInput() {
   const [workOrderId, setWorkOrderId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = value.trim();
     if (!message || isLoading) return;
 
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     setMessages((prev) => [...prev, { role: "user", body: message }]);
     setValue("");
     setIsLoading(true);
@@ -34,18 +37,28 @@ export function ChatInput() {
         message,
         chat_session_id: chatSessionId,
         work_order_id: workOrderId ?? undefined,
-      });
+      }, abortController.signal);
       setChatSessionId(result.chat_session_id);
       if (result.work_order_id) {
         setWorkOrderId(result.work_order_id);
       }
       setMessages((prev) => [...prev, { role: "assistant", body: result.response }]);
     } catch {
+      if (abortController.signal.aborted) {
+        return;
+      }
       setValue(message);
       setError("Something went wrong sending your message. Please try again.");
     } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
       setIsLoading(false);
     }
+  }
+
+  function handleStop() {
+    abortControllerRef.current?.abort();
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -96,9 +109,25 @@ export function ChatInput() {
           className="w-full resize-none rounded-lg border border-tavi-navy/20 px-4 py-3 text-sm text-tavi-navy placeholder:text-tavi-navy/40 focus:border-tavi-indigo focus:outline-none"
         />
         <div className="flex justify-end">
-          <Button type="submit" disabled={value.trim().length === 0 || isLoading}>
-            Send
-          </Button>
+          {isLoading ? (
+            <Button
+              type="button"
+              aria-label="Stop"
+              className="h-10 w-10 justify-center rounded-full px-0"
+              onClick={handleStop}
+            >
+              <span aria-hidden="true" className="text-xs leading-none">■</span>
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              aria-label="Send"
+              disabled={value.trim().length === 0}
+              className="h-10 w-10 justify-center rounded-full px-0"
+            >
+              <span aria-hidden="true" className="text-lg leading-none">↑</span>
+            </Button>
+          )}
         </div>
       </form>
     </div>

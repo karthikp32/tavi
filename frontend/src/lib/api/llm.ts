@@ -13,9 +13,13 @@ export interface LlmMessageResponse {
   tool_calls: Record<string, unknown>[];
 }
 
-export function sendLlmMessage(payload: SendLlmMessagePayload): Promise<LlmMessageResponse> {
+export function sendLlmMessage(
+  payload: SendLlmMessagePayload,
+  signal?: AbortSignal,
+): Promise<LlmMessageResponse> {
   return apiFetch<LlmMessageResponse>("/api/llm/messages", {
     method: "POST",
     body: JSON.stringify(payload),
+    signal,
   });
 }

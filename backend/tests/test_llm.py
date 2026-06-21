@@ -1,5 +1,6 @@
 import os
 import json
+import threading
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
@@ -52,6 +53,30 @@ def db_session():
         yield db
     finally:
         db.close()
+
+class FakeStreamResponse:
+    def __init__(self, lines, status_code=200, text=""):
+        self.lines = lines
+        self.status_code = status_code
+        self.text = text
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def close(self):
+        self.closed = True
+
+    def iter_lines(self):
+        return iter(self.lines)
+
+
+def stream_event(delta):
+    return "data: " + json.dumps({"choices": [{"delta": delta}]})
+
 
 def test_session_creation_and_persistence(client, db_session):
     # Call without chat_session_id
@@ -202,7 +227,7 @@ def test_search_vendors_tool_rejects_non_positive_target_budget(db_session):
     assert res == {"error": "target_budget must be greater than 0"}
 
 def test_multi_turn_tool_execution_loop(client, db_session):
-    # Mock OpenRouter API call returning a tool call first, then a text response
+    # Mock OpenRouter API stream returning a tool call first, then a text response
     user = db_session.query(models.User).first()
     
     # Create an active chat session
@@ -213,58 +238,46 @@ def test_multi_turn_tool_execution_loop(client, db_session):
     db_session.add(chat_session)
     db_session.commit()
     
-    mock_headers = {
-        "Authorization": "Bearer mock_key",
-        "Content-Type": "application/json"
-    }
-    
-    # Configure mock responses for OpenRouter
+    # Configure mock stream responses for OpenRouter
     # First response: call create_work_order
     # Second response: final text response
-    res1_mock = MagicMock()
-    res1_mock.status_code = 200
-    res1_mock.json.return_value = {
-        "choices": [{
-            "message": {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [{
-                    "id": "call_123",
-                    "type": "function",
-                    "function": {
-                        "name": "create_work_order",
-                        "arguments": json.dumps({
-                            "user_id": user.id,
-                            "title": "LLM created work order",
-                            "description": "Created via DeepSeek tool call",
-                            "trade": "Plumbing",
-                            "status": "ready_for_vendor_discovery",
-                            "urgency": "normal"
-                        })
-                    }
-                }]
-            }
-        }]
-    }
-    
-    res2_mock = MagicMock()
-    res2_mock.status_code = 200
-    res2_mock.json.return_value = {
-        "choices": [{
-            "message": {
-                "role": "assistant",
-                "content": "I have created the Plumbing work order for you.",
-                "tool_calls": None
-            }
-        }]
-    }
-    
+    res1_mock = FakeStreamResponse([
+        stream_event({
+            "role": "assistant",
+            "tool_calls": [{
+                "index": 0,
+                "id": "call_123",
+                "type": "function",
+                "function": {
+                    "name": "create_work_order",
+                    "arguments": json.dumps({
+                        "user_id": user.id,
+                        "title": "LLM created work order",
+                        "description": "Created via DeepSeek tool call",
+                        "trade": "Plumbing",
+                        "status": "ready_for_vendor_discovery",
+                        "urgency": "normal"
+                    })
+                }
+            }]
+        }),
+        "data: [DONE]",
+    ])
+
+    res2_mock = FakeStreamResponse([
+        stream_event({
+            "role": "assistant",
+            "content": "I have created the Plumbing work order for you.",
+        }),
+        "data: [DONE]",
+    ])
+
     with patch("app.llm.OPENROUTER_API_KEY", "mock_key"):
         # Patch the Client class specifically inside app.llm to not affect TestClient
         with patch("app.llm.httpx.Client") as mock_client_class:
             mock_client = MagicMock()
             mock_client_class.return_value.__enter__.return_value = mock_client
-            mock_client.post.side_effect = [res1_mock, res2_mock]
+            mock_client.stream.side_effect = [res1_mock, res2_mock]
             
             payload = {
                 "chat_session_id": chat_session.id,
@@ -277,6 +290,9 @@ def test_multi_turn_tool_execution_loop(client, db_session):
             assert len(data["tool_calls"]) == 1
             assert data["tool_calls"][0]["name"] == "create_work_order"
             
+            first_call = mock_client.stream.call_args_list[0]
+            assert first_call.kwargs["json"]["stream"] is True
+
             # Verify work order was actually created in the DB!
             db_session.expire_all()
             wo = db_session.query(models.WorkOrder).filter(
@@ -284,6 +300,23 @@ def test_multi_turn_tool_execution_loop(client, db_session):
             ).first()
             assert wo is not None
             assert wo.status == "ready_for_vendor_discovery"
+
+def test_openrouter_stream_cancel_flag_stops_reading(db_session):
+    cancel_event = threading.Event()
+    cancel_event.set()
+    response = FakeStreamResponse([
+        stream_event({"role": "assistant", "content": "This should not be read."}),
+        "data: [DONE]",
+    ])
+
+    with pytest.raises(llm.LlmRequestCancelled):
+        llm._read_streamed_openrouter_message(
+            MagicMock(stream=MagicMock(return_value=response)),
+            {"Authorization": "Bearer mock_key"},
+            {"model": "mock", "messages": []},
+            cancel_event,
+        )
+    assert response.closed is True
 
 def test_fallback_response_is_persisted(client, db_session):
     user = db_session.query(models.User).first()
@@ -294,30 +327,27 @@ def test_fallback_response_is_persisted(client, db_session):
     db_session.add(chat_session)
     db_session.commit()
 
-    tool_response = MagicMock()
-    tool_response.status_code = 200
-    tool_response.json.return_value = {
-        "choices": [{
-            "message": {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [{
-                    "id": "call_loop",
-                    "type": "function",
-                    "function": {
-                        "name": "get_work_order",
-                        "arguments": json.dumps({"id": "missing-work-order"})
-                    }
-                }]
-            }
-        }]
-    }
+    tool_response = FakeStreamResponse([
+        stream_event({
+            "role": "assistant",
+            "tool_calls": [{
+                "index": 0,
+                "id": "call_loop",
+                "type": "function",
+                "function": {
+                    "name": "get_work_order",
+                    "arguments": json.dumps({"id": "missing-work-order"})
+                }
+            }]
+        }),
+        "data: [DONE]",
+    ])
 
     with patch("app.llm.OPENROUTER_API_KEY", "mock_key"):
         with patch("app.llm.httpx.Client") as mock_client_class:
             mock_client = MagicMock()
             mock_client_class.return_value.__enter__.return_value = mock_client
-            mock_client.post.return_value = tool_response
+            mock_client.stream.return_value = tool_response
 
             response = client.post(
                 "/api/llm/messages",

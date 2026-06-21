@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, status
+import anyio
+from fastapi import FastAPI, Depends, HTTPException, Query, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect, text
@@ -793,8 +794,16 @@ def create_chat_message(id: str, msg: schemas.ChatMessageCreate, db: Session = D
     return db_msg
 
 @app.post("/api/llm/messages", response_model=schemas.LlmMessageResponse)
-def post_llm_message(req: schemas.LlmMessageRequest, db: Session = Depends(get_db)):
+def post_llm_message(
+    req: schemas.LlmMessageRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     from . import llm
+
+    class ClientDisconnectCancel:
+        def is_set(self) -> bool:
+            return anyio.from_thread.run(request.is_disconnected)
     
     # 1. Fetch or create chat session
     if req.chat_session_id:
@@ -828,8 +837,13 @@ def post_llm_message(req: schemas.LlmMessageRequest, db: Session = Depends(get_d
         db.commit()
         db.refresh(chat_session)
         
-    # 2. Run the LLM conversation loop
-    res = llm.run_llm_conversation(db, chat_session, req.message)
+    try:
+        # 2. Run the LLM conversation loop
+        res = llm.run_llm_conversation(
+            db, chat_session, req.message, ClientDisconnectCancel()
+        )
+    except llm.LlmRequestCancelled:
+        raise HTTPException(status_code=499, detail="Message cancelled")
     
     return schemas.LlmMessageResponse(
         response=res["response"],

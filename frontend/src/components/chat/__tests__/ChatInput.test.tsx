@@ -34,11 +34,14 @@ describe("ChatInput", () => {
       expect(screen.getByText("I can help with that.")).toBeInTheDocument();
     });
 
-    expect(sendLlmMessage).toHaveBeenCalledWith({
-      message: "Fix a leaking sink",
-      chat_session_id: undefined,
-      work_order_id: undefined,
-    });
+    expect(sendLlmMessage).toHaveBeenCalledWith(
+      {
+        message: "Fix a leaking sink",
+        chat_session_id: undefined,
+        work_order_id: undefined,
+      },
+      expect.any(AbortSignal),
+    );
   });
 
   it("renders a link to the created work order when one is returned", async () => {
@@ -96,12 +99,37 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
     await waitFor(() => {
-      expect(sendLlmMessage).toHaveBeenLastCalledWith({
-        message: "Also check the breaker",
-        chat_session_id: "session_1",
-        work_order_id: "wo_1",
-      });
+      expect(sendLlmMessage).toHaveBeenLastCalledWith(
+        {
+          message: "Also check the breaker",
+          chat_session_id: "session_1",
+          work_order_id: "wo_1",
+        },
+        expect.any(AbortSignal),
+      );
     });
+  });
+
+  it("aborts an in-flight message when stop is clicked", async () => {
+    let signal: AbortSignal | undefined;
+    vi.mocked(sendLlmMessage).mockImplementation((_payload, requestSignal) => {
+      signal = requestSignal;
+      return new Promise(() => {});
+    });
+
+    render(<ChatInput />);
+
+    fireEvent.change(screen.getByPlaceholderText(/describe your work order/i), {
+      target: { value: "Fix a leaking sink" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(screen.getByRole("button", { name: /stop/i })).toBeInTheDocument();
+    expect(signal?.aborted).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /stop/i }));
+
+    expect(signal?.aborted).toBe(true);
   });
 
   it("shows an error state when the request fails", async () => {
