@@ -61,6 +61,8 @@ The backend creates the SQLite schema and seeds mock companies, facilities, vend
 
 The default SQLite URL is `sqlite:///./tavi.db`, so the file is created relative to the directory where you start the backend. If you run the backend from `backend/`, the file is `backend/tavi.db`.
 
+For the scope of this project, Yelp-backed vendor business names can be used as vendor login tokens by lowercasing the name and replacing spaces or punctuation with hyphens.
+
 To intentionally reset and reseed the database, run:
 
 ```bash
@@ -126,4 +128,3 @@ The price fit is then calculated using the market average:
   $$\text{price\_fit} = 1.0 \quad \text{when} \quad \text{median\_price} \le \text{avg\_median}$$
 * **Above-Average Penalty**: If the vendor's price is higher than the local market average, the fit score decays relative to the average:
   $$\text{price\_fit} = \max\left(0.0, 1.0 - \frac{\text{median\_price} - \text{avg\_median}}{\text{avg\_median}}\right)$$
-

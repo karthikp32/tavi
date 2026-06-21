@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -17,6 +17,16 @@ const inputClassName =
 const cities = ["New York", "Los Angeles", "Chicago"];
 const trades = ["Plumbing", "Electrical", "HVAC", "Cleaning", "Lawncare", "General maintenance"];
 const ratingMarks = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"];
+const MIN_PAGE_SIZE = 6;
+const MAX_PAGE_SIZE = 18;
+
+function getViewportPageSize() {
+  if (typeof window === "undefined") return 10;
+
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  const availableTableHeight = viewportHeight - 360;
+  return Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, Math.floor(availableTableHeight / 48)));
+}
 
 export default function VendorsPage() {
   const [city, setCity] = useState("");
@@ -26,6 +36,22 @@ export default function VendorsPage() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(getViewportPageSize);
+
+  useEffect(() => {
+    const updatePageSize = () => {
+      setPageSize(getViewportPageSize());
+      setPage(1);
+    };
+
+    window.addEventListener("resize", updatePageSize);
+    window.visualViewport?.addEventListener("resize", updatePageSize);
+    return () => {
+      window.removeEventListener("resize", updatePageSize);
+      window.visualViewport?.removeEventListener("resize", updatePageSize);
+    };
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
@@ -34,8 +60,6 @@ export default function VendorsPage() {
     if (trade) filters.trade = trade;
     if (minRating) filters.rating = Number(minRating);
 
-    setIsLoading(true);
-    setError(null);
     getVendors(filters)
       .then((result) => {
         if (!isCancelled) setVendors(result);
@@ -50,6 +74,14 @@ export default function VendorsPage() {
       isCancelled = true;
     };
   }, [city, trade, minRating]);
+
+  const totalPages = Math.max(1, Math.ceil(vendors.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const paginatedVendors = useMemo(
+    () => vendors.slice(pageStart, pageStart + pageSize),
+    [vendors, pageStart, pageSize],
+  );
 
   const columns: TableColumn<Vendor>[] = [
     {
@@ -104,7 +136,12 @@ export default function VendorsPage() {
           <select
             aria-label="City"
             value={city}
-            onChange={(event) => setCity(event.target.value)}
+            onChange={(event) => {
+              setPage(1);
+              setIsLoading(true);
+              setError(null);
+              setCity(event.target.value);
+            }}
             className={inputClassName}
           >
             <option value="">All cities</option>
@@ -118,7 +155,12 @@ export default function VendorsPage() {
           <select
             aria-label="Trade"
             value={trade}
-            onChange={(event) => setTrade(event.target.value)}
+            onChange={(event) => {
+              setPage(1);
+              setIsLoading(true);
+              setError(null);
+              setTrade(event.target.value);
+            }}
             className={inputClassName}
           >
             <option value="">All trades</option>
@@ -139,7 +181,12 @@ export default function VendorsPage() {
               step="0.5"
               list="min-rating-marks"
               value={minRating}
-              onChange={(event) => setMinRating(event.target.value)}
+              onChange={(event) => {
+                setPage(1);
+                setIsLoading(true);
+                setError(null);
+                setMinRating(event.target.value);
+              }}
               className="h-1 w-40 cursor-pointer accent-tavi-navy-dark"
             />
             <datalist id="min-rating-marks">
@@ -159,7 +206,35 @@ export default function VendorsPage() {
           />
         ) : null}
         {!isLoading && !error && vendors.length > 0 ? (
-          <Table columns={columns} rows={vendors} getRowKey={(vendor) => vendor.id} />
+          <div className="flex flex-col gap-3">
+            <Table columns={columns} rows={paginatedVendors} getRowKey={(vendor) => vendor.id} />
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-tavi-navy/70">
+              <span>
+                Showing {pageStart + 1}-{Math.min(pageStart + pageSize, vendors.length)} of {vendors.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-md border border-tavi-navy/20 px-3 py-2 font-medium text-tavi-navy disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <span aria-live="polite">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-md border border-tavi-navy/20 px-3 py-2 font-medium text-tavi-navy disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
     </AppShell>

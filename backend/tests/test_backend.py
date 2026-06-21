@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, get_db
 from app.main import app
-from app.seed import ensure_seed_db, seed_db
+from app.seed import ensure_seed_db, migrate_yelp_vendor_seed_data, seed_db
 from app import models
 
 # Use a separate SQLite file for tests
@@ -121,6 +121,69 @@ def test_ensure_seed_db_seeds_empty_sqlite_once(tmp_path):
         db.close()
         Base.metadata.drop_all(bind=auto_seed_engine)
         auto_seed_engine.dispose()
+
+
+def test_yelp_vendor_seed_migration_preserves_existing_data(tmp_path):
+    db_path = tmp_path / "existing_data.db"
+    migration_engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    MigrationSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=migration_engine)
+
+    Base.metadata.create_all(bind=migration_engine)
+    db = MigrationSessionLocal()
+    try:
+        company = models.Company(
+            id="existing-company",
+            name="Existing Facility Manager",
+            company_type="facility_manager",
+        )
+        user = models.User(
+            id="facility-manager-1",
+            company_id=company.id,
+            name="Existing Manager",
+            email="existing@example.com",
+            user_type="facility_manager",
+            login_token="fm-existing",
+        )
+        vendor_company = models.Company(
+            id="existing-vendor-company",
+            name="Existing Plumbing",
+            company_type="vendor",
+            trade="Plumbing",
+            city="New York",
+            state="NY",
+        )
+        existing_vendor = models.Vendor(
+            id="existing-vendor",
+            company_id=vendor_company.id,
+            name="Existing Plumbing",
+            trade="Plumbing",
+            city="New York",
+            login_token="plumber-1",
+        )
+        db.add_all([company, user, vendor_company, existing_vendor])
+        db.commit()
+
+        assert migrate_yelp_vendor_seed_data(db) == 90
+        assert db.query(models.User).filter(models.User.id == "facility-manager-1").count() == 1
+        assert db.query(models.Vendor).filter(models.Vendor.id == "existing-vendor").count() == 1
+        assert db.query(models.Vendor).count() == 91
+
+        green_tech = db.query(models.Vendor).filter(
+            models.Vendor.name == "Green Tech Plumbing"
+        ).one()
+        assert green_tech.login_token == "green-tech-plumbing"
+        assert green_tech.phone == "847-518-5338"
+
+        assert migrate_yelp_vendor_seed_data(db) == 0
+        assert db.query(models.Vendor).count() == 91
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=migration_engine)
+        migration_engine.dispose()
+
 
 def test_startup_seed_preserves_existing_sqlite_data(tmp_path, monkeypatch):
     db_path = tmp_path / "persistent_startup.db"

@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from urllib.parse import quote_plus
 
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from .database import Base, SessionLocal, engine
 from .models import (
@@ -24,7 +25,7 @@ from .models import (
 )
 
 
-def seed_db(db: Session):
+def seed_db(db: Session, announce: bool = True):
     # Clear existing data to allow clean re-seeding
     db.query(WorkOrder).update({WorkOrder.accepted_bid_id: None})
     db.query(ChatMessage).delete()
@@ -534,12 +535,119 @@ def seed_db(db: Session):
         )
 
     db.commit()
-    print("Database successfully seeded.")
+    if announce:
+        print("Database successfully seeded.")
+
+
+def vendor_name_login_token(name: str) -> str:
+    return "".join(
+        character.lower() if character.isalnum() else "-"
+        for character in name
+    ).strip("-")
+
+
+def migrate_yelp_vendor_seed_data(db: Session) -> int:
+    temp_engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    TempSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=temp_engine)
+    Base.metadata.create_all(bind=temp_engine)
+
+    temp_db = TempSessionLocal()
+    try:
+        seed_db(temp_db, announce=False)
+        existing_vendor_keys = {
+            (
+                vendor.name.lower(),
+                vendor.trade.lower(),
+                (vendor.city or "").lower(),
+            )
+            for vendor in db.query(Vendor).all()
+        }
+        inserted_count = 0
+
+        for source_vendor in temp_db.query(Vendor).all():
+            vendor_key = (
+                source_vendor.name.lower(),
+                source_vendor.trade.lower(),
+                (source_vendor.city or "").lower(),
+            )
+            if vendor_key in existing_vendor_keys:
+                continue
+
+            source_company = source_vendor.company
+            company = Company(
+                id=str(uuid.uuid4()),
+                name=source_company.name,
+                company_type=source_company.company_type,
+                trade=source_company.trade,
+                phone=source_company.phone,
+                email=source_company.email,
+                address=source_company.address,
+                city=source_company.city,
+                state=source_company.state,
+                postal_code=source_company.postal_code,
+            )
+            db.add(company)
+            db.flush()
+
+            vendor = Vendor(
+                id=str(uuid.uuid4()),
+                company_id=company.id,
+                name=source_vendor.name,
+                trade=source_vendor.trade,
+                phone=source_vendor.phone,
+                email=source_vendor.email,
+                address=source_vendor.address,
+                city=source_vendor.city,
+                latitude=source_vendor.latitude,
+                longitude=source_vendor.longitude,
+                rating=source_vendor.rating,
+                review_count=source_vendor.review_count,
+                license_status=source_vendor.license_status,
+                insurance_status=source_vendor.insurance_status,
+                quality_score=source_vendor.quality_score,
+                availability_score=source_vendor.availability_score,
+                risk_score=source_vendor.risk_score,
+                score_evidence=source_vendor.score_evidence,
+                login_token=vendor_name_login_token(source_vendor.name),
+            )
+            db.add(vendor)
+            db.flush()
+
+            for source_stat in source_vendor.task_stats:
+                db.add(
+                    VendorTaskStat(
+                        vendor_id=vendor.id,
+                        trade=source_stat.trade,
+                        task_type=source_stat.task_type,
+                        city=source_stat.city,
+                        completed_work_order_count=source_stat.completed_work_order_count,
+                        median_price_cents=source_stat.median_price_cents,
+                        median_quality_score=source_stat.median_quality_score,
+                    )
+                )
+            for source_block in source_vendor.availability_blocks:
+                db.add(
+                    VendorAvailabilityBlock(
+                        vendor_id=vendor.id,
+                        starts_at=source_block.starts_at,
+                        ends_at=source_block.ends_at,
+                    )
+                )
+
+            existing_vendor_keys.add(vendor_key)
+            inserted_count += 1
+
+        if inserted_count:
+            db.commit()
+        return inserted_count
+    finally:
+        temp_db.close()
+        temp_engine.dispose()
 
 
 def ensure_seed_db(db: Session) -> bool:
     if db.query(User).first() or db.query(Vendor).first():
-        return False
+        return migrate_yelp_vendor_seed_data(db) > 0
     seed_db(db)
     return True
 

@@ -40,4 +40,42 @@ describe("VendorsPage", () => {
       expect(getVendors).toHaveBeenCalledWith({ city: "New York", trade: "Plumbing", rating: 4 });
     });
   });
+
+  it("paginates vendor rows", async () => {
+    vi.mocked(getVendors).mockResolvedValue(
+      Array.from({ length: 12 }, (_, index) => ({
+        id: `vendor-${index + 1}`,
+        company_id: null,
+        name: `Vendor ${index + 1}`,
+        trade: "Plumbing",
+        phone: null,
+        email: null,
+        address: null,
+        city: "New York",
+        latitude: null,
+        longitude: null,
+        rating: 4.8,
+        review_count: 10,
+        license_status: "verified",
+        insurance_status: "verified",
+        quality_score: 0.8,
+        availability_score: 0.7,
+        risk_score: 0.1,
+        score_evidence: null,
+        created_at: "2026-01-01T00:00:00",
+        updated_at: "2026-01-01T00:00:00",
+      })),
+    );
+
+    render(<VendorsPage />);
+
+    expect(await screen.findByText("Vendor 1")).toBeInTheDocument();
+    expect(screen.queryByText("Vendor 12")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 1-8 of 12")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(await screen.findByText("Vendor 12")).toBeInTheDocument();
+    expect(screen.getByText("Showing 9-12 of 12")).toBeInTheDocument();
+  });
 });
