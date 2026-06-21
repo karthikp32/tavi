@@ -523,7 +523,10 @@ def test_vendor_work_order_tool_returns_matching_transparent_auction_work_orders
     ]
     listed = next(wo for wo in res if wo["id"] == matching.id)
     assert listed["lowest_bid_cents"] == 22000
+    assert listed["lowest_bid_is_yours"] is False
     assert listed["vendor_bid_cents"] is None
+    assert "lowest_bid_vendor_id" not in listed
+    assert other_vendor.id not in json.dumps(listed)
 
 def test_vendor_make_bid_creates_candidate_and_reports_lowest_bid(db_session):
     vendor = db_session.query(models.Vendor).filter(models.Vendor.trade == "Electrical").first()
@@ -570,6 +573,9 @@ def test_vendor_make_bid_creates_candidate_and_reports_lowest_bid(db_session):
     assert res["amount_cents"] == 45000
     assert res["previous_lowest_bid_cents"] == 50000
     assert res["lowest_bid_cents"] == 45000
+    assert res["lowest_bid_is_yours"] is True
+    assert "lowest_bid_vendor_id" not in res
+    assert other_vendor.id not in json.dumps(res)
     candidate = db_session.query(models.WorkOrderCandidate).filter(
         models.WorkOrderCandidate.work_order_id == wo.id,
         models.WorkOrderCandidate.vendor_id == vendor.id,
