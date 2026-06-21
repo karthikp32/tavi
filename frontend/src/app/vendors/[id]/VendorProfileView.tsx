@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { getVendor, contactVendor } from "@/lib/api/vendors";
 import { getWorkOrderCandidates, contactWorkOrderCandidate } from "@/lib/api/candidates";
 import { getWorkOrders } from "@/lib/api/work-orders";
+import { NewWorkOrderForm } from "@/app/work-orders/new/NewWorkOrderForm";
 import type { CommunicationEvent, Vendor, WorkOrder, WorkOrderCandidate } from "@/lib/types";
 
 interface VendorProfileViewProps {
@@ -20,6 +22,8 @@ interface VendorProfileViewProps {
 const selectClassName =
   "rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy focus:border-tavi-indigo focus:outline-none";
 
+const NEW_WORK_ORDER_VALUE = "__new__";
+
 export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfileViewProps) {
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,7 +32,9 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string>(initialWorkOrderId ?? "");
   const [candidates, setCandidates] = useState<WorkOrderCandidate[]>([]);
+  const [isNewWorkOrderModalOpen, setIsNewWorkOrderModalOpen] = useState(false);
 
+  const [messageBody, setMessageBody] = useState("");
   const [contactError, setContactError] = useState<string | null>(null);
   const [isContacting, setIsContacting] = useState(false);
   const [lastEvent, setLastEvent] = useState<CommunicationEvent | null>(null);
@@ -47,6 +53,22 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
       .then(setWorkOrders)
       .catch(() => setWorkOrders([]));
   }, []);
+
+  function handleWorkOrderSelectChange(value: string) {
+    if (value === NEW_WORK_ORDER_VALUE) {
+      setIsNewWorkOrderModalOpen(true);
+      return;
+    }
+    setSelectedWorkOrderId(value);
+  }
+
+  async function handleNewWorkOrderSuccess(workOrderId: string) {
+    setIsNewWorkOrderModalOpen(false);
+    try {
+      setWorkOrders(await getWorkOrders());
+    } catch {}
+    setSelectedWorkOrderId(workOrderId);
+  }
 
   useEffect(() => {
     if (!selectedWorkOrderId) {
@@ -77,10 +99,14 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
       setContactError("Select a work order before contacting this vendor.");
       return;
     }
+    if (!messageBody.trim()) {
+      setContactError("Type a message before sending.");
+      return;
+    }
     setContactError(null);
     setIsContacting(true);
     try {
-      const body = `Outreach via ${channel} regarding work order.`;
+      const body = messageBody.trim();
       const event = candidate
         ? await contactWorkOrderCandidate(candidate.id, { channel, body })
         : await contactVendor(vendor.id, {
@@ -167,7 +193,7 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
             <select
               id="work_order_select"
               value={selectedWorkOrderId}
-              onChange={(event) => setSelectedWorkOrderId(event.target.value)}
+              onChange={(event) => handleWorkOrderSelectChange(event.target.value)}
               className={selectClassName}
             >
               <option value="">No work order selected</option>
@@ -176,6 +202,7 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
                   {workOrder.title}
                 </option>
               ))}
+              <option value={NEW_WORK_ORDER_VALUE}>+ New work order…</option>
             </select>
 
             {candidate ? (
@@ -183,6 +210,18 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
                 Candidate status: <span className="font-medium">{candidate.status}</span>
               </p>
             ) : null}
+
+            <label htmlFor="message_body" className="text-sm font-medium text-tavi-navy/80">
+              Message
+            </label>
+            <textarea
+              id="message_body"
+              rows={4}
+              value={messageBody}
+              onChange={(event) => setMessageBody(event.target.value)}
+              placeholder="Type the message you want to send as an email or text…"
+              className="rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy placeholder:text-tavi-navy/40 focus:border-tavi-indigo focus:outline-none"
+            />
 
             <div className="flex gap-2">
               <Button
@@ -207,7 +246,7 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
                 disabled={isContacting}
                 onClick={() => handleContact("phone")}
               >
-                Log call
+                Call {vendor.name}
               </Button>
             </div>
 
@@ -219,6 +258,12 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
             ) : null}
           </div>
         </Card>
+
+        {isNewWorkOrderModalOpen ? (
+          <Modal title="New Work Order" onClose={() => setIsNewWorkOrderModalOpen(false)}>
+            <NewWorkOrderForm onSuccess={handleNewWorkOrderSuccess} />
+          </Modal>
+        ) : null}
       </div>
     </AppShell>
   );

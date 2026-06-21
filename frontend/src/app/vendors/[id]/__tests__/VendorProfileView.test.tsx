@@ -125,6 +125,10 @@ describe("VendorProfileView", () => {
       target: { value: "wo_1" },
     });
 
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Outreach via email regarding work order." },
+    });
+
     fireEvent.click(screen.getByRole("button", { name: /send email/i }));
 
     await waitFor(() => {
@@ -205,6 +209,10 @@ describe("VendorProfileView", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Candidate status:/)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Outreach via sms regarding work order." },
     });
 
     fireEvent.click(screen.getByRole("button", { name: /send text/i }));
