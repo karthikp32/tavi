@@ -16,7 +16,7 @@ load_dotenv()
 
 from . import models
 from .database import SessionLocal
-from .main import create_wo_snapshot, update_bidding_mode_if_needed
+from .services.work_orders import create_wo_snapshot, update_bidding_mode_if_needed
 
 logger = logging.getLogger(__name__)
 
