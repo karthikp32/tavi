@@ -232,7 +232,7 @@ export interface Bid {
   status: BidStatus;
   submitted_at: string;
   created_at: string;
-  candidate?: { vendor_id: string } | null;
+  candidate?: { vendor_id: string; status?: CandidateStatus | null } | null;
 }
 
 export interface AgentAction {

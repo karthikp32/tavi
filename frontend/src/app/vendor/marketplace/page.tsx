@@ -37,6 +37,17 @@ function getLowestActiveBid(bids: Bid[]): Bid | null {
   return active.reduce((lowest, bid) => (bid.amount_cents < lowest.amount_cents ? bid : lowest));
 }
 
+function getVendorBid(bids: Bid[], vendorId: string): Bid | null {
+  return bids.find((bid) => bid.candidate?.vendor_id === vendorId) ?? null;
+}
+
+function formatBidStatus(status: Bid["status"]): string {
+  return status
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export default function VendorMarketplacePage() {
   const [session] = useState<Session | null>(() => getSession());
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
@@ -54,18 +65,22 @@ export default function VendorMarketplacePage() {
       setError(null);
       try {
         const all = await getWorkOrders();
-        const tradeWorkOrders = all.filter(
-          (wo) => wo.trade === session!.trade && wo.bidding_mode === "transparent_auction",
-        );
+        const tradeWorkOrders = all.filter((wo) => wo.trade === session!.trade);
         const bidLists = await Promise.all(tradeWorkOrders.map((wo) => getWorkOrderBids(wo.id)));
         const bidsMap: Record<string, Bid[]> = {};
         tradeWorkOrders.forEach((wo, index) => {
           bidsMap[wo.id] = bidLists[index];
         });
         const relevant = tradeWorkOrders.filter(
-          (wo) =>
-            isOpenForBidding(wo.status) ||
-            bidsMap[wo.id].some((bid) => bid.candidate?.vendor_id === session!.id),
+          (wo) => {
+            const hasVendorBid = bidsMap[wo.id].some(
+              (bid) => bid.candidate?.vendor_id === session!.id,
+            );
+            return (
+              hasVendorBid ||
+              (wo.bidding_mode === "transparent_auction" && isOpenForBidding(wo.status))
+            );
+          },
         );
         if (!isCancelled) {
           setWorkOrders(relevant);
@@ -119,6 +134,15 @@ export default function VendorMarketplacePage() {
       key: "status",
       header: "Status",
       render: (wo) => <StatusBadge status={wo.status} />,
+    },
+    {
+      key: "vendor_bid",
+      header: "Your bid",
+      render: (wo) => {
+        const vendorBid = getVendorBid(bidsByWorkOrderId[wo.id] ?? [], session.id);
+        if (!vendorBid) return "—";
+        return `${formatBidStatus(vendorBid.status)} · ${formatCents(vendorBid.amount_cents)}`;
+      },
     },
     {
       key: "lowest_bid",
