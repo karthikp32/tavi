@@ -96,18 +96,21 @@ describe("api client request building", () => {
     );
   });
 
-  it("posts to the candidate contact endpoint with query params", async () => {
+  it("posts to the candidate contact endpoint with message body", async () => {
     const fetchMock = mockFetchOnce({});
 
     await contactWorkOrderCandidate("cand_1", { channel: "email", body: "hi" });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/api/work-order-candidates/cand_1/contact?channel=email&body=hi",
-      expect.objectContaining({ method: "POST" }),
+      "http://localhost:8000/api/work-order-candidates/cand_1/contact?channel=email",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ body: "hi" }),
+      }),
     );
   });
 
-  it("posts to the vendor contact endpoint with query params", async () => {
+  it("posts to the vendor contact endpoint with message body", async () => {
     const fetchMock = mockFetchOnce({});
 
     await contactVendor("vendor_1", {
@@ -117,8 +120,11 @@ describe("api client request building", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/api/vendors/vendor_1/contact?channel=email&work_order_id=wo_1&body=hi",
-      expect.objectContaining({ method: "POST" }),
+      "http://localhost:8000/api/vendors/vendor_1/contact?channel=email&work_order_id=wo_1",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ body: "hi" }),
+      }),
     );
   });
 

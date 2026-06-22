@@ -6,12 +6,13 @@ export type UpdateCandidatePayload = Partial<
 >;
 
 export interface ContactCandidatePayload {
-  [key: string]: string | number | boolean | undefined;
   channel: "email" | "sms" | "phone" | "chat" | "note";
   body: string;
   direction?: "inbound" | "outbound" | "internal";
   actor_type?: string;
   actor_name?: string;
+  sender_id?: string;
+  sender_type?: string;
 }
 
 export interface CreateCandidateMessagePayload {
@@ -52,9 +53,13 @@ export function contactWorkOrderCandidate(
   id: string,
   payload: ContactCandidatePayload,
 ): Promise<CommunicationEvent> {
+  const { body, sender_id, sender_type, ...query } = payload;
   return apiFetch<CommunicationEvent>(
-    `/api/work-order-candidates/${id}/contact${buildQueryString(payload)}`,
-    { method: "POST" },
+    `/api/work-order-candidates/${id}/contact${buildQueryString(query)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ body, sender_id, sender_type }),
+    },
   );
 }
 

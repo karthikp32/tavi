@@ -116,14 +116,11 @@ def get_vendor(id: str, db: Session = Depends(get_db)):
 @router.post("/{id}/contact", response_model=schemas.CommunicationEventOut)
 def contact_vendor(
     id: str,
+    message: schemas.ContactVendorMessage,
     work_order_id: str = Query(...),
     channel: str = Query(...),
-    body: str = Query(...),
     direction: str = Query("outbound"),
     actor_type: str = Query("facility_manager"),
-    actor_name: Optional[str] = Query(None),
-    sender_id: Optional[str] = Query(None),
-    sender_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     vendor = db.query(models.Vendor).filter(models.Vendor.id == id).first()
@@ -142,15 +139,18 @@ def contact_vendor(
         existing_status="contacted",
         next_action="awaiting response",
     )
-    return record_communication_event(
+    event = record_communication_event(
         db,
         work_order_id=work_order_id,
         candidate_id=candidate.id,
         channel=channel,
         direction=direction,
         actor_type=actor_type,
-        actor_name=actor_name,
-        sender_id=sender_id,
-        sender_type=sender_type,
-        body=body,
+        actor_name=message.actor_name,
+        sender_id=message.sender_id,
+        sender_type=message.sender_type,
+        body=message.body,
     )
+    db.commit()
+    db.refresh(event)
+    return event

@@ -1,7 +1,6 @@
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, Header, HTTPException
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -36,12 +35,6 @@ def get_current_llm_actor(
         return {"id": user.id, "type": user.user_type, "user": user, "vendor": None}
 
     vendor = db.query(models.Vendor).filter(models.Vendor.login_token == x_tavi_login_token).first()
-    if not vendor:
-        vendor = (
-            db.query(models.Vendor)
-            .filter(func.lower(models.Vendor.name) == x_tavi_login_token.lower())
-            .first()
-        )
     if vendor:
         return {"id": vendor.id, "type": "vendor", "user": None, "vendor": vendor}
 

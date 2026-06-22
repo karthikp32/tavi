@@ -48,7 +48,7 @@ def create_wo_snapshot(
         created_at=datetime.utcnow(),
     )
     db.add(snapshot)
-    db.commit()
+    db.flush()
 
 
 def update_bidding_mode_if_needed(db: Session, work_order: models.WorkOrder):
@@ -72,5 +72,4 @@ def update_bidding_mode_if_needed(db: Session, work_order: models.WorkOrder):
 
     if old_mode != new_mode:
         work_order.bidding_mode = new_mode
-        db.commit()
         create_wo_snapshot(db, work_order, actor_type="system", actor_name="Bidding Mode Evaluator")

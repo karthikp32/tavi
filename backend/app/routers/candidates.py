@@ -40,11 +40,12 @@ def patch_work_order_candidate(id: str, update: schemas.WorkOrderCandidateUpdate
 
     if update_data:
         candidate.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(candidate)
 
         if "status" in update_data:
             update_bidding_mode_if_needed(db, candidate.work_order)
+
+        db.commit()
+        db.refresh(candidate)
 
     return candidate
 
@@ -62,19 +63,20 @@ def create_candidate_endpoint(id: str, vendor_id: str = Query(...), db: Session 
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    return get_or_create_candidate(db, id, vendor_id, create_status="discovered")
+    candidate = get_or_create_candidate(db, id, vendor_id, create_status="discovered")
+    db.commit()
+    db.refresh(candidate)
+    return candidate
 
 
 @router.post("/api/work-order-candidates/{id}/contact", response_model=schemas.CommunicationEventOut)
 def contact_candidate_direct(
     id: str,
+    message: schemas.ContactCandidateMessage,
     channel: str = Query(...),
-    body: str = Query(...),
     direction: str = Query("outbound"),
     actor_type: str = Query("facility_manager"),
     actor_name: Optional[str] = Query(None),
-    sender_id: Optional[str] = Query(None),
-    sender_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     candidate = db.query(models.WorkOrderCandidate).filter(models.WorkOrderCandidate.id == id).first()
@@ -84,10 +86,8 @@ def contact_candidate_direct(
     candidate.status = "contacted"
     candidate.last_contacted_at = datetime.utcnow()
     candidate.next_action = "awaiting response"
-    db.commit()
-    db.refresh(candidate)
 
-    return record_communication_event(
+    event = record_communication_event(
         db,
         work_order_id=candidate.work_order_id,
         candidate_id=candidate.id,
@@ -95,10 +95,13 @@ def contact_candidate_direct(
         direction=direction,
         actor_type=actor_type,
         actor_name=actor_name,
-        sender_id=sender_id,
-        sender_type=sender_type,
-        body=body,
+        sender_id=message.sender_id,
+        sender_type=message.sender_type,
+        body=message.body,
     )
+    db.commit()
+    db.refresh(event)
+    return event
 
 
 @router.post("/api/work-order-candidates/{id}/messages", response_model=schemas.CommunicationEventOut)
@@ -114,10 +117,8 @@ def message_candidate_inbound(
 
     candidate.status = "responded"
     candidate.next_action = "review response"
-    db.commit()
-    db.refresh(candidate)
 
-    return record_communication_event(
+    event = record_communication_event(
         db,
         work_order_id=candidate.work_order_id,
         candidate_id=candidate.id,
@@ -129,3 +130,6 @@ def message_candidate_inbound(
         sender_type="vendor",
         body=body,
     )
+    db.commit()
+    db.refresh(event)
+    return event

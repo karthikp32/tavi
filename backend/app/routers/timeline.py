@@ -1,17 +1,23 @@
-from typing import List
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..dependencies.auth import get_current_llm_actor
+from ..services.authorization import get_accessible_work_order
 
 router = APIRouter(prefix="/api/work-orders")
 
 
 @router.get("/{id}/states", response_model=List[schemas.WorkOrderStateOut])
-def list_work_order_states(id: str, db: Session = Depends(get_db)):
-    work_order = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
+def list_work_order_states(
+    id: str,
+    db: Session = Depends(get_db),
+    current_actor: Dict[str, Any] = Depends(get_current_llm_actor),
+):
+    work_order = get_accessible_work_order(db, id, current_actor)
     if not work_order:
         raise HTTPException(status_code=404, detail="Work order not found")
     return (
@@ -23,8 +29,12 @@ def list_work_order_states(id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{id}/timeline")
-def get_work_order_timeline(id: str, db: Session = Depends(get_db)):
-    work_order = db.query(models.WorkOrder).filter(models.WorkOrder.id == id).first()
+def get_work_order_timeline(
+    id: str,
+    db: Session = Depends(get_db),
+    current_actor: Dict[str, Any] = Depends(get_current_llm_actor),
+):
+    work_order = get_accessible_work_order(db, id, current_actor)
     if not work_order:
         raise HTTPException(status_code=404, detail="Work order not found")
 

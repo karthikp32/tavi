@@ -52,11 +52,13 @@ def create_bid(id: str, bid: schemas.BidCreate, db: Session = Depends(get_db)):
     candidate.available_start_at = bid.arrival_window_start
     candidate.available_end_at = bid.arrival_window_end
 
-    db.commit()
+    db.flush()
     db.refresh(db_bid)
     db.refresh(candidate)
 
     update_bidding_mode_if_needed(db, work_order)
+    db.commit()
+    db.refresh(db_bid)
 
     return db_bid
 
@@ -72,10 +74,15 @@ def patch_bid(id: str, bid_up: schemas.BidUpdate, db: Session = Depends(get_db))
         setattr(db_bid, key, val)
 
     if up_data:
-        db.commit()
+        db.flush()
         db.refresh(db_bid)
 
     if up_data.get("status") == "accepted":
         accept_bid(db, db_bid, actor_type="system", actor_name="Bid Acceptor")
+        db.commit()
+        db.refresh(db_bid)
+    elif up_data:
+        db.commit()
+        db.refresh(db_bid)
 
     return db_bid

@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -13,10 +12,6 @@ def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
     credential = payload.token.strip()
     user = db.query(models.User).filter(models.User.login_token == credential).first()
     vendor = db.query(models.Vendor).filter(models.Vendor.login_token == credential).first()
-    if not vendor:
-        vendor = (
-            db.query(models.Vendor).filter(func.lower(models.Vendor.name) == credential.lower()).first()
-        )
 
     if user and vendor:
         raise HTTPException(status_code=401, detail="Invalid token")

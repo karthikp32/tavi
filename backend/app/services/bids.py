@@ -28,8 +28,4 @@ def accept_bid(db: Session, bid: models.Bid, *, actor_type: str, actor_name: str
     for candidate in other_candidates:
         candidate.status = "not_selected"
 
-    db.commit()
-    db.refresh(work_order)
-    db.refresh(bid.candidate)
-
     create_wo_snapshot(db, work_order, actor_type=actor_type, actor_name=actor_name)

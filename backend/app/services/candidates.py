@@ -8,6 +8,15 @@ from sqlalchemy.orm import Session
 from .. import models
 
 
+def is_duplicate_candidate_integrity_error(exc: IntegrityError) -> bool:
+    message = str(exc.orig).lower()
+    return (
+        "work_order_candidates.work_order_id" in message
+        and "work_order_candidates.vendor_id" in message
+        and ("unique" in message or "constraint" in message)
+    )
+
+
 def get_or_create_candidate(
     db: Session,
     work_order_id: str,
@@ -29,7 +38,7 @@ def get_or_create_candidate(
             candidate.next_action = next_action
         if existing_status or next_action:
             candidate.last_contacted_at = datetime.utcnow()
-            db.commit()
+            db.flush()
             db.refresh(candidate)
         return candidate
 
@@ -43,9 +52,11 @@ def get_or_create_candidate(
         candidate.last_contacted_at = datetime.utcnow()
     db.add(candidate)
     try:
-        db.commit()
+        db.flush()
     except IntegrityError as exc:
         db.rollback()
+        if not is_duplicate_candidate_integrity_error(exc):
+            raise
         candidate = db.query(models.WorkOrderCandidate).filter(
             models.WorkOrderCandidate.work_order_id == work_order_id,
             models.WorkOrderCandidate.vendor_id == vendor_id,
@@ -82,6 +93,6 @@ def record_communication_event(
         created_at=datetime.utcnow(),
     )
     db.add(event)
-    db.commit()
+    db.flush()
     db.refresh(event)
     return event

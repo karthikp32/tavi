@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..dependencies.auth import get_current_llm_actor
+from ..services.authorization import get_accessible_work_order
 
 router = APIRouter(prefix="/api/llm")
 
@@ -34,6 +35,9 @@ def post_llm_message(
     actor_id = req.actor_id or current_actor["id"]
     if actor_id != current_actor["id"]:
         raise HTTPException(status_code=403, detail="Actor does not match login token")
+
+    if req.work_order_id and not get_accessible_work_order(db, req.work_order_id, current_actor):
+        raise HTTPException(status_code=404, detail="Work order not found")
 
     if req.chat_session_id:
         chat_session = db.query(models.ChatSession).filter(

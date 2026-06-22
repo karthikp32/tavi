@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..dependencies.auth import get_current_user, get_optional_current_user
+from ..dependencies.auth import get_current_user
 from ..services.work_orders import create_wo_snapshot
 
 router = APIRouter(prefix="/api/work-orders")
@@ -20,7 +20,7 @@ def create_work_order(
 ):
     db_wo = models.WorkOrder(
         user_id=current_user.id,
-        company_id=wo_in.company_id or current_user.company_id,
+        company_id=current_user.company_id,
         facility_id=wo_in.facility_id,
         title=wo_in.title,
         description=wo_in.description,
@@ -43,10 +43,12 @@ def create_work_order(
         completed_vendor_quality_score=wo_in.completed_vendor_quality_score,
     )
     db.add(db_wo)
-    db.commit()
+    db.flush()
     db.refresh(db_wo)
 
     create_wo_snapshot(db, db_wo, actor_type=wo_in.actor_type, actor_name=wo_in.actor_name)
+    db.commit()
+    db.refresh(db_wo)
 
     return db_wo
 
@@ -55,11 +57,10 @@ def create_work_order(
 def list_work_orders(
     vendor_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_optional_current_user),
+    current_user: models.User = Depends(get_current_user),
 ):
     query = db.query(models.WorkOrder)
-    if current_user:
-        query = query.filter(models.WorkOrder.user_id == current_user.id)
+    query = query.filter(models.WorkOrder.user_id == current_user.id)
     if vendor_id:
         query = query.join(
             models.WorkOrderCandidate,
@@ -116,10 +117,12 @@ def patch_work_order(
 
     if update_data:
         wo.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(wo)
 
     if changed:
         create_wo_snapshot(db, wo, actor_type=actor_type, actor_name=actor_name)
+
+    if update_data or changed:
+        db.commit()
+        db.refresh(wo)
 
     return wo

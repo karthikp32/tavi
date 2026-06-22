@@ -813,9 +813,11 @@ def tool_create_work_order(
         target_budget_cents=target_budget_cents,
     )
     db.add(db_wo)
-    db.commit()
+    db.flush()
     db.refresh(db_wo)
     create_wo_snapshot(db, db_wo, actor_type="agent", actor_name="Tavi Tool Agent")
+    db.commit()
+    db.refresh(db_wo)
     return serialize_model(db_wo)
 
 
@@ -889,8 +891,7 @@ def tool_update_work_order(
     wo.updated_at = datetime.utcnow()
     if changed:
         create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
-    else:
-        db.commit()
+    db.commit()
     db.refresh(wo)
 
     return serialize_model(wo)
@@ -1213,10 +1214,12 @@ def tool_create_bid(
             arrival_window_end.replace("Z", "")
         )
 
-    db.commit()
+    db.flush()
     db.refresh(db_bid)
 
     update_bidding_mode_if_needed(db, candidate.work_order)
+    db.commit()
+    db.refresh(db_bid)
     return serialize_model(db_bid)
 
 
@@ -1269,8 +1272,7 @@ def tool_update_bid(
             oc.status = "not_selected"
 
         create_wo_snapshot(db, wo, actor_type="agent", actor_name="Tavi Tool Agent")
-    else:
-        db.commit()
+    db.commit()
 
     db.refresh(db_bid)
 
