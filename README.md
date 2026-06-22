@@ -1,6 +1,12 @@
 # Tavi
 
-Tavi is an AI-native command center for facility managers to manage trade work orders, discover vendors, collect bids, and select winners. This repository contains the FastAPI backend, SQLite persistence layer, and the Next.js frontend.
+Tavi is an AI-native command center for facilities work. Facility managers use it to create work orders, manage facilities, discover vendors, collect bids, and choose winners. Vendors use it to review marketplace work, ask the Tavi agent about eligible jobs and lowest-bid context, and place bids.
+
+This repository contains:
+
+* **Backend**: FastAPI, SQLAlchemy, SQLite, seed data, and the OpenRouter-backed agent/tool loop.
+* **Frontend**: Next.js App Router UI for facility managers and vendors.
+* **Agent tools**: role-scoped database tools for work orders, facilities, vendors, communications, marketplace listings, and bids.
 
 ---
 
@@ -15,6 +21,14 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). See `frontend/README.md` for routes, tests, lint, and build commands.
+
+Important routes:
+
+* `/login` - sign in with a facility-manager token, vendor token, or vendor business name.
+* `/tavi` - shared Tavi agent page for both facility managers and vendors.
+* `/work-orders`, `/facilities`, `/vendors` - facility-manager workspaces.
+* `/vendor/marketplace` - vendor marketplace and bid status view.
+* `/` and `/home` - redirect to `/tavi`.
 
 ---
 
@@ -55,13 +69,37 @@ Open [http://localhost:3000](http://localhost:3000). See `frontend/README.md` fo
    pip install -r requirements.txt
    ```
 
+### Environment Variables
+
+Create a `backend/.env` file (loaded automatically via `python-dotenv`) with:
+
+```bash
+OPENROUTER_API_KEY=your-openrouter-api-key
+# Optional, defaults shown:
+OPENROUTER_MODEL=deepseek/deepseek-v4-flash
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+DATABASE_URL=sqlite:///./tavi.db
+```
+
+`OPENROUTER_API_KEY` is required for model-backed chat responses. Guardrail refusals and non-agent API routes can still work without it.
+
 ### Database Seeding
 
-The backend creates the SQLite schema and seeds mock companies, facilities, vendors, task stats, and availability blocks automatically on startup when the database is empty. You do not need to run a separate seed command for normal local development.
+The backend creates the SQLite schema and seeds demo companies, facilities, work orders, vendors, task stats, and availability blocks automatically on startup when the database is empty. You do not need to run a separate seed command for normal local development.
 
 The default SQLite URL is `sqlite:///./tavi.db`, so the file is created relative to the directory where you start the backend. If you run the backend from `backend/`, the file is `backend/tavi.db`.
 
-For the scope of this project, Yelp-backed vendor business names can be used as vendor login tokens by lowercasing the name and replacing spaces or punctuation with hyphens.
+Seed data includes 90 Yelp-backed local vendors: five vendors per trade, per city, across New York, Los Angeles, and Chicago.
+
+#### Test login credentials
+
+Most endpoints require an `X-Tavi-Login-Token` header (set automatically by the frontend after you log in at `/login`). Seeded tokens you can use for local testing:
+
+* **Facility manager**: `facility-manager-1`
+* **Vendor tokens**: `<trade-slug>-<n>`, e.g. `plumber-1`, `electrician-3`, `hvac-tech-2`, `cleaner-1`, `landscaper-1`, `maintenance-tech-1`
+* **Vendor business names**: use a seeded business name directly, e.g. `Sam's Plumbing Services` or `DB Electric`
+
+Vendor token numbering runs 1-15 per trade, with five vendors per trade in each demo city.
 
 To intentionally reset and reseed the database, run:
 
@@ -85,6 +123,13 @@ To run the complete test suite (incorporating database CRUD, candidacy lifecycle
 
 ```bash
 PYTHONPATH=. .venv/bin/pytest tests/
+```
+
+Common focused checks:
+
+```bash
+PYTHONPATH=. .venv/bin/pytest tests/test_backend.py
+PYTHONPATH=. .venv/bin/pytest tests/test_llm.py
 ```
 
 ### Directory Structure
@@ -114,23 +159,38 @@ For the scope of this project, Tavi uses role-specific system prompts and server
 
 In production, Tavi would add a dedicated safety classifier plus industry-leading input and output guardrails before and after the LLM call. Those layers would classify unsafe or off-domain input, detect prompt injection, validate generated responses, and block unsafe outputs before they reach the UI.
 
+### Role Boundaries
+
+Facility managers can use Tavi to create and inspect their own work orders, list their facilities, discover vendors, contact vendors, collect bids, and compare bid outcomes.
+
+Vendors can use Tavi to inspect marketplace work that matches their profile, see lowest-bid context without exposing competing vendor identities, and submit their own bids. Vendor chat history and marketplace status are scoped to the authenticated vendor.
+
 ### Dynamic Vendor Price Fit Calculation
 
 When searching for vendors in the marketplace via the `search_vendors` tool, the system calculates a dynamic `price_fit` score (ranging from `0.0` to `1.0`) to indicate how well a vendor's pricing matches the user's budget expectations.
 
 #### 1. With a User-Specified Budget (`target_budget` is provided)
 If the facility manager has set an explicit target budget, the price fit is calculated as:
-* **Perfect Match (`1.0`)**: If the vendor's historical median price is less than or equal to the target budget:
-  $$\text{price\_fit} = 1.0 \quad \text{when} \quad \text{median\_price} \le \text{target\_budget}$$
-* **Gradual Decay**: If the vendor's median price exceeds the target budget, the score decays linearly towards `0.0` based on the percentage deviation:
-  $$\text{price\_fit} = \max\left(0.0, 1.0 - \frac{\text{median\_price} - \text{target\_budget}}{\text{target\_budget}}\right)$$
+
+* **Perfect Match (`1.0`)**: If the vendor's historical median price is less than or equal to the target budget, `price_fit = 1.0`.
+* **Gradual Decay**: If the vendor's median price exceeds the target budget, the score decays linearly toward `0.0`:
+
+```text
+price_fit = max(0.0, 1.0 - ((median_price - target_budget) / target_budget))
+```
 
 #### 2. Without a User-Specified Budget (`target_budget` is omitted)
-When the target budget is unknown, the system must define a comparative baseline to score the vendors. We use the **local market average median price** ($\text{avg\_median}$) of all vendors matching the trade and city as this baseline:
-$$\text{avg\_median} = \frac{1}{N} \sum_{i=1}^{N} \text{median\_price}_i$$
+When the target budget is unknown, the system uses the **local market average median price** of all vendors matching the trade and city as the baseline:
+
+```text
+avg_median = sum(median_price values for matching vendors) / matching_vendor_count
+```
 
 The price fit is then calculated using the market average:
-* **Competitive Fit (`1.0`)**: If the vendor's price is equal to or below the local market average, they are considered a perfect competitive fit:
-  $$\text{price\_fit} = 1.0 \quad \text{when} \quad \text{median\_price} \le \text{avg\_median}$$
-* **Above-Average Penalty**: If the vendor's price is higher than the local market average, the fit score decays relative to the average:
-  $$\text{price\_fit} = \max\left(0.0, 1.0 - \frac{\text{median\_price} - \text{avg\_median}}{\text{avg\_median}}\right)$$
+
+* **Competitive Fit (`1.0`)**: If the vendor's median price is equal to or below the local market average, `price_fit = 1.0`.
+* **Above-Average Penalty**: If the vendor's median price is higher than the local market average, the score decays relative to the average:
+
+```text
+price_fit = max(0.0, 1.0 - ((median_price - avg_median) / avg_median))
+```
