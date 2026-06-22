@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/Button";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { formInputClassName } from "@/components/ui/styles";
 import { getVendor, contactVendor } from "@/lib/api/vendors";
 import { getWorkOrderCandidates, contactWorkOrderCandidate } from "@/lib/api/candidates";
 import { createWorkOrder, getWorkOrders } from "@/lib/api/work-orders";
 import { DEFAULT_USER_ID } from "@/lib/constants";
 import { describeCommunicationEvent } from "@/lib/format";
+import { useAsyncData } from "@/lib/hooks/useAsyncData";
 import type { CommunicationEvent, Vendor, WorkOrder, WorkOrderCandidate } from "@/lib/types";
 
 interface VendorProfileViewProps {
@@ -19,15 +21,14 @@ interface VendorProfileViewProps {
   initialWorkOrderId?: string;
 }
 
-const selectClassName =
-  "rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy focus:border-tavi-indigo focus:outline-none";
-
 const NEW_WORK_ORDER_VALUE = "__new__";
 
 export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfileViewProps) {
-  const [vendor, setVendor] = useState<Vendor | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: vendor,
+    isLoading,
+    error,
+  } = useAsyncData<Vendor | null>(() => getVendor(vendorId), [vendorId], null, "Could not load this vendor.");
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string>(
@@ -39,15 +40,6 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
   const [contactError, setContactError] = useState<string | null>(null);
   const [isContacting, setIsContacting] = useState(false);
   const [lastEvent, setLastEvent] = useState<CommunicationEvent | null>(null);
-
-  useEffect(() => {
-    setIsLoading(true);
-    setError(null);
-    getVendor(vendorId)
-      .then(setVendor)
-      .catch(() => setError("Could not load this vendor."))
-      .finally(() => setIsLoading(false));
-  }, [vendorId]);
 
   useEffect(() => {
     getWorkOrders({ vendor_id: vendorId })
@@ -207,7 +199,7 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
               id="work_order_select"
               value={selectedWorkOrderId}
               onChange={(event) => setSelectedWorkOrderId(event.target.value)}
-              className={selectClassName}
+              className={formInputClassName}
             >
               {workOrders.map((workOrder) => (
                 <option key={workOrder.id} value={workOrder.id}>
@@ -232,7 +224,7 @@ export function VendorProfileView({ vendorId, initialWorkOrderId }: VendorProfil
               value={messageBody}
               onChange={(event) => setMessageBody(event.target.value)}
               placeholder="Type the message you want to send as an email or text…"
-              className="rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy placeholder:text-tavi-navy/40 focus:border-tavi-indigo focus:outline-none"
+              className={`${formInputClassName} placeholder:text-tavi-navy/40`}
             />
 
             <div className="flex gap-2">

@@ -4,11 +4,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { FormField } from "@/components/ui/FormField";
+import { formInputClassName } from "@/components/ui/styles";
 import { createWorkOrderCandidate } from "@/lib/api/candidates";
 import { createWorkOrderBid } from "@/lib/api/bids";
-
-const inputClassName =
-  "rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy focus:border-tavi-indigo focus:outline-none";
+import { validateArrivalWindow } from "@/lib/validation";
 
 interface VendorPlaceBidFormProps {
   workOrderId: string;
@@ -31,12 +30,9 @@ export function VendorPlaceBidForm({ workOrderId, vendorId, onSuccess }: VendorP
     if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
       nextErrors.amount = "Bid amount is required";
     }
-    if (
-      arrivalWindowStart &&
-      arrivalWindowEnd &&
-      new Date(arrivalWindowEnd) < new Date(arrivalWindowStart)
-    ) {
-      nextErrors.arrivalWindowEnd = "Arrival window end must be after the start";
+    const arrivalWindowError = validateArrivalWindow(arrivalWindowStart, arrivalWindowEnd);
+    if (arrivalWindowError) {
+      nextErrors.arrivalWindowEnd = arrivalWindowError;
     }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
@@ -73,7 +69,7 @@ export function VendorPlaceBidForm({ workOrderId, vendorId, onSuccess }: VendorP
           step="0.01"
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -84,7 +80,7 @@ export function VendorPlaceBidForm({ workOrderId, vendorId, onSuccess }: VendorP
           type="datetime-local"
           value={arrivalWindowStart}
           onChange={(event) => setArrivalWindowStart(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -99,7 +95,7 @@ export function VendorPlaceBidForm({ workOrderId, vendorId, onSuccess }: VendorP
           type="datetime-local"
           value={arrivalWindowEnd}
           onChange={(event) => setArrivalWindowEnd(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -110,7 +106,7 @@ export function VendorPlaceBidForm({ workOrderId, vendorId, onSuccess }: VendorP
           rows={3}
           value={scopeNotes}
           onChange={(event) => setScopeNotes(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 

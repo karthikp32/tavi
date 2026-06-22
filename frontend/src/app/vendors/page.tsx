@@ -8,14 +8,12 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Table, type TableColumn } from "@/components/ui/Table";
+import { formInputClassName } from "@/components/ui/styles";
 import { getVendors, type VendorSearchFilters } from "@/lib/api/vendors";
+import { VENDOR_CITIES, VENDOR_TRADES } from "@/lib/constants";
+import { useAsyncData } from "@/lib/hooks/useAsyncData";
 import type { Vendor } from "@/lib/types";
 
-const inputClassName =
-  "rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy focus:border-tavi-indigo focus:outline-none";
-
-const cities = ["New York", "Los Angeles", "Chicago"];
-const trades = ["Plumbing", "Electrical", "HVAC", "Cleaning", "Lawncare", "General maintenance"];
 const ratingMarks = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"];
 const MIN_PAGE_SIZE = 6;
 const MAX_PAGE_SIZE = 18;
@@ -33,9 +31,6 @@ export default function VendorsPage() {
   const [trade, setTrade] = useState("");
   const [minRating, setMinRating] = useState("4");
 
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(getViewportPageSize);
 
@@ -53,27 +48,18 @@ export default function VendorsPage() {
     };
   }, []);
 
-  useEffect(() => {
-    let isCancelled = false;
-    const filters: VendorSearchFilters = {};
-    if (city) filters.city = city;
-    if (trade) filters.trade = trade;
-    if (minRating) filters.rating = Number(minRating);
-
-    getVendors(filters)
-      .then((result) => {
-        if (!isCancelled) setVendors(result);
-      })
-      .catch(() => {
-        if (!isCancelled) setError("Could not load vendors. Please try again.");
-      })
-      .finally(() => {
-        if (!isCancelled) setIsLoading(false);
-      });
-    return () => {
-      isCancelled = true;
-    };
-  }, [city, trade, minRating]);
+  const { data: vendors, isLoading, error } = useAsyncData<Vendor[]>(
+    () => {
+      const filters: VendorSearchFilters = {};
+      if (city) filters.city = city;
+      if (trade) filters.trade = trade;
+      if (minRating) filters.rating = Number(minRating);
+      return getVendors(filters);
+    },
+    [city, trade, minRating],
+    [],
+    "Could not load vendors. Please try again.",
+  );
 
   const totalPages = Math.max(1, Math.ceil(vendors.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -138,14 +124,12 @@ export default function VendorsPage() {
             value={city}
             onChange={(event) => {
               setPage(1);
-              setIsLoading(true);
-              setError(null);
               setCity(event.target.value);
             }}
-            className={inputClassName}
+            className={formInputClassName}
           >
             <option value="">All cities</option>
-            {cities.map((option) => (
+            {VENDOR_CITIES.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
@@ -157,14 +141,12 @@ export default function VendorsPage() {
             value={trade}
             onChange={(event) => {
               setPage(1);
-              setIsLoading(true);
-              setError(null);
               setTrade(event.target.value);
             }}
-            className={inputClassName}
+            className={formInputClassName}
           >
             <option value="">All trades</option>
-            {trades.map((option) => (
+            {VENDOR_TRADES.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
@@ -183,8 +165,6 @@ export default function VendorsPage() {
               value={minRating}
               onChange={(event) => {
                 setPage(1);
-                setIsLoading(true);
-                setError(null);
                 setMinRating(event.target.value);
               }}
               className="h-1 w-40 cursor-pointer accent-tavi-navy-dark"
