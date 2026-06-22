@@ -60,11 +60,14 @@ def db_session():
 def auth_headers(token: str = "facility-manager-1") -> dict[str, str]:
     return {"X-Tavi-Login-Token": token}
 
-def test_vendor_name_login_returns_token_that_authenticates_llm(client, db_session):
+def test_vendor_name_login_is_rejected_and_token_authenticates_llm(client, db_session):
     vendor = db_session.query(models.Vendor).filter(models.Vendor.login_token.isnot(None)).first()
 
     login_response = client.post("/api/auth/login", json={"token": vendor.name})
 
+    assert login_response.status_code == 401
+
+    login_response = client.post("/api/auth/login", json={"token": vendor.login_token})
     assert login_response.status_code == 200
     identity = login_response.json()
     assert identity["id"] == vendor.id
@@ -78,12 +81,12 @@ def test_vendor_name_login_returns_token_that_authenticates_llm(client, db_sessi
             "actor_type": "vendor",
             "actor_id": vendor.id,
         },
-        headers=auth_headers(vendor.name),
+        headers=auth_headers(vendor.login_token),
     )
 
     assert llm_response.status_code == 200
 
-def test_vendor_can_reload_own_llm_chat_history(client, db_session):
+def test_vendor_token_cannot_access_user_chat_session_list(client, db_session):
     vendor = db_session.query(models.Vendor).filter(models.Vendor.login_token.isnot(None)).first()
 
     llm_response = client.post(
@@ -99,12 +102,7 @@ def test_vendor_can_reload_own_llm_chat_history(client, db_session):
 
     chat_response = client.get("/api/chat-sessions", headers=auth_headers(vendor.login_token))
 
-    assert chat_response.status_code == 200
-    sessions = chat_response.json()
-    assert len(sessions) == 1
-    assert sessions[0]["id"] == llm_response.json()["chat_session_id"]
-    assert sessions[0]["user_id"] == vendor.id
-    assert [message["role"] for message in sessions[0]["messages"]] == ["vendor", "assistant"]
+    assert chat_response.status_code == 401
 
 def test_schema_creation_and_seeding(client):
     # Verify we have seeded users and companies
@@ -507,7 +505,12 @@ def test_contact_actions(client, db_session):
     
     # Contact vendor (this should create a candidate and communication event)
     response_contact = client.post(
-        f"/api/vendors/{vendor.id}/contact?work_order_id={wo_id}&channel=email&body=Need HVAC repair detail&sender_id={user.id}&sender_type=facility_manager"
+        f"/api/vendors/{vendor.id}/contact?work_order_id={wo_id}&channel=email",
+        json={
+            "body": "Need HVAC repair detail",
+            "sender_id": user.id,
+            "sender_type": "facility_manager",
+        },
     )
     assert response_contact.status_code == 200
     event = response_contact.json()
@@ -544,7 +547,12 @@ def test_candidate_communications_store_sender_identity(client, db_session):
 
     outbound = client.post(
         f"/api/work-order-candidates/{candidate_id}/contact"
-        f"?channel=email&body=Can you quote this?&sender_id={user.id}&sender_type=facility_manager"
+        f"?channel=email",
+        json={
+            "body": "Can you quote this?",
+            "sender_id": user.id,
+            "sender_type": "facility_manager",
+        },
     )
     assert outbound.status_code == 200
     outbound_event = outbound.json()
@@ -728,7 +736,10 @@ def test_timeline_endpoint(client, db_session):
     candidate_id = response_c.json()["id"]
     
     # Perform contact (generates a communication event)
-    client.post(f"/api/vendors/{vendor.id}/contact?work_order_id={wo_id}&channel=phone&body=Called vendor")
+    client.post(
+        f"/api/vendors/{vendor.id}/contact?work_order_id={wo_id}&channel=phone",
+        json={"body": "Called vendor"},
+    )
     
     # Submit bid
     bid_payload = {

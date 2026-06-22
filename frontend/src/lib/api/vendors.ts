@@ -17,13 +17,14 @@ export interface VendorSearchFilters {
 }
 
 export interface ContactVendorPayload {
-  [key: string]: string | number | boolean | undefined;
   channel: "email" | "sms" | "phone";
   work_order_id: string;
   body: string;
   direction?: "inbound" | "outbound" | "internal";
   actor_type?: string;
   actor_name?: string;
+  sender_id?: string;
+  sender_type?: string;
 }
 
 function toNumberOrNull(value: unknown): number | null {
@@ -56,7 +57,9 @@ export function contactVendor(
   id: string,
   payload: ContactVendorPayload,
 ): Promise<CommunicationEvent> {
-  return apiFetch<CommunicationEvent>(`/api/vendors/${id}/contact${buildQueryString(payload)}`, {
+  const { body, actor_name, sender_id, sender_type, ...query } = payload;
+  return apiFetch<CommunicationEvent>(`/api/vendors/${id}/contact${buildQueryString(query)}`, {
     method: "POST",
+    body: JSON.stringify({ body, actor_name, sender_id, sender_type }),
   });
 }

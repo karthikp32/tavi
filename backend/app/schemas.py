@@ -551,6 +551,17 @@ class CommunicationEventOut(CommunicationEventBase):
     id: str
     created_at: datetime
 
+class ContactVendorMessage(AppBaseModel):
+    body: str
+    actor_name: Optional[str] = None
+    sender_id: Optional[str] = None
+    sender_type: Optional[str] = None
+
+class ContactCandidateMessage(AppBaseModel):
+    body: str
+    sender_id: Optional[str] = None
+    sender_type: Optional[str] = None
+
 # ----------------- Agent Action Schemas -----------------
 
 class AgentActionBase(AppBaseModel):
