@@ -14,21 +14,72 @@ This repository contains:
 
 The frontend lives in `frontend/` (Next.js App Router).
 
+### Requirements
+
+* Node.js 20+
+* npm
+
+### Setup
+
 ```bash
 cd frontend
 npm install
+```
+
+The frontend expects the FastAPI backend (see below) running at `http://localhost:8000`. The frontend calls the backend at `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`); to point at a different backend, set it in `frontend/.env.local`:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
+
+### Running the Frontend
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). See `frontend/README.md` for routes, tests, lint, and build commands.
+Open [http://localhost:3000](http://localhost:3000). You will be redirected to `/login`; sign in with a seeded login token or vendor business name (see "Test login credentials" below).
 
-Important routes:
+### Routes
 
-* `/login` - sign in with a facility-manager token, vendor token, or vendor business name.
-* `/tavi` - shared Tavi agent page for both facility managers and vendors.
-* `/work-orders`, `/facilities`, `/vendors` - facility-manager workspaces.
-* `/vendor/marketplace` - vendor marketplace and bid status view.
-* `/` and `/home` - redirect to `/tavi`.
+* `/login` — sign in with a login token or vendor business name
+* `/tavi` — shared Tavi agent page for facility managers and vendors
+* `/` and `/home` — redirects to `/tavi`
+* `/work-orders` — work order dashboard
+* `/work-orders/new` — manual work order creation form
+* `/work-orders/[id]` — work order review page
+* `/work-orders/[id]/bids/[bidId]` — bid detail page
+* `/vendors` — vendor search
+* `/vendors/[id]` — vendor profile
+* `/facilities` — facility list
+* `/vendor/marketplace` — vendor-facing marketplace of open work orders plus the vendor's submitted bids
+
+Facility managers see Tavi, Work Orders, Facilities, and Vendors navigation. Vendors see Tavi and Marketplace navigation.
+
+### Running Tests
+
+```bash
+npm test
+```
+
+### Typecheck
+
+```bash
+npx tsc --noEmit
+```
+
+### Lint
+
+```bash
+npm run lint
+```
+
+### Build for production
+
+```bash
+npm run build
+npm start
+```
 
 ---
 
