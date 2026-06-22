@@ -5,13 +5,12 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { formInputClassName } from "@/components/ui/styles";
 import { createWorkOrder } from "@/lib/api/work-orders";
 import { createFacility, getFacilities } from "@/lib/api/facilities";
 import { DEFAULT_USER_ID } from "@/lib/constants";
+import { validateArrivalWindow } from "@/lib/validation";
 import type { Facility, Urgency } from "@/lib/types";
-
-const inputClassName =
-  "rounded-md border border-tavi-navy/20 px-3 py-2 text-sm text-tavi-navy focus:border-tavi-indigo focus:outline-none";
 
 const urgencyOptions: Urgency[] = ["low", "normal", "high", "emergency"];
 
@@ -69,12 +68,9 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
       if (!newFacilityName.trim()) nextErrors.newFacilityName = "Facility name is required";
       if (!newFacilityAddress.trim()) nextErrors.newFacilityAddress = "Facility address is required";
     }
-    if (
-      arrivalWindowStart &&
-      arrivalWindowEnd &&
-      new Date(arrivalWindowEnd) < new Date(arrivalWindowStart)
-    ) {
-      nextErrors.arrivalWindowEnd = "Arrival window end must be after the start";
+    const arrivalWindowError = validateArrivalWindow(arrivalWindowStart, arrivalWindowEnd);
+    if (arrivalWindowError) {
+      nextErrors.arrivalWindowEnd = arrivalWindowError;
     }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
@@ -153,7 +149,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           name="trade"
           value={trade}
           onChange={(event) => setTrade(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -163,7 +159,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           name="facility_id"
           value={isAddingFacility ? NEW_FACILITY_VALUE : facilityId}
           onChange={(event) => handleFacilitySelectChange(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         >
           <option value="">No facility</option>
           {facilities.map((facility) => (
@@ -182,7 +178,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
               id="new_facility_name"
               value={newFacilityName}
               onChange={(event) => setNewFacilityName(event.target.value)}
-              className={inputClassName}
+              className={formInputClassName}
             />
           </FormField>
           <FormField label="Address" htmlFor="new_facility_address" error={errors.newFacilityAddress}>
@@ -190,7 +186,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
               id="new_facility_address"
               value={newFacilityAddress}
               onChange={(event) => setNewFacilityAddress(event.target.value)}
-              className={inputClassName}
+              className={formInputClassName}
             />
           </FormField>
           <FormField label="City" htmlFor="new_facility_city">
@@ -198,7 +194,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
               id="new_facility_city"
               value={newFacilityCity}
               onChange={(event) => setNewFacilityCity(event.target.value)}
-              className={inputClassName}
+              className={formInputClassName}
             />
           </FormField>
           <FormField label="State" htmlFor="new_facility_state">
@@ -206,7 +202,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
               id="new_facility_state"
               value={newFacilityState}
               onChange={(event) => setNewFacilityState(event.target.value)}
-              className={inputClassName}
+              className={formInputClassName}
             />
           </FormField>
           <FormField label="Postal code" htmlFor="new_facility_postal_code">
@@ -214,7 +210,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
               id="new_facility_postal_code"
               value={newFacilityPostalCode}
               onChange={(event) => setNewFacilityPostalCode(event.target.value)}
-              className={inputClassName}
+              className={formInputClassName}
             />
           </FormField>
         </div>
@@ -227,7 +223,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           rows={4}
           value={description}
           onChange={(event) => setDescription(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -242,7 +238,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           type="datetime-local"
           value={requestedStartAt}
           onChange={(event) => setRequestedStartAt(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -252,7 +248,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           name="urgency"
           value={urgency}
           onChange={(event) => setUrgency(event.target.value as Urgency | "")}
-          className={inputClassName}
+          className={formInputClassName}
         >
           <option value="">Select urgency</option>
           {urgencyOptions.map((option) => (
@@ -272,7 +268,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           step="0.01"
           value={targetBudget}
           onChange={(event) => setTargetBudget(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -295,7 +291,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           step="0.01"
           value={maxPrice}
           onChange={(event) => setMaxPrice(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -306,7 +302,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           type="datetime-local"
           value={bidDeadlineAt}
           onChange={(event) => setBidDeadlineAt(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -317,7 +313,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           type="datetime-local"
           value={arrivalWindowStart}
           onChange={(event) => setArrivalWindowStart(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
@@ -332,7 +328,7 @@ export function NewWorkOrderForm({ onSuccess }: NewWorkOrderFormProps = {}) {
           type="datetime-local"
           value={arrivalWindowEnd}
           onChange={(event) => setArrivalWindowEnd(event.target.value)}
-          className={inputClassName}
+          className={formInputClassName}
         />
       </FormField>
 
